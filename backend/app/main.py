@@ -73,14 +73,19 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# CORS — allow listed origins + optional regex (covers Vercel preview URLs)
+cors_kwargs: dict = {
+    "allow_credentials": True,
+    "allow_methods": ["*"],
+    "allow_headers": ["*"],
+}
+if settings.ALLOWED_ORIGINS_REGEX:
+    cors_kwargs["allow_origin_regex"] = settings.ALLOWED_ORIGINS_REGEX
+    cors_kwargs["allow_origins"] = settings.ALLOWED_ORIGINS
+else:
+    cors_kwargs["allow_origins"] = settings.ALLOWED_ORIGINS
+
+app.add_middleware(CORSMiddleware, **cors_kwargs)
 
 # Serve uploaded media locally
 media_path = Path(settings.LOCAL_STORAGE_PATH)

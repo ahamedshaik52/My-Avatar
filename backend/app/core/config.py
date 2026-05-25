@@ -60,8 +60,10 @@ class Settings(BaseSettings):
     MAX_AVATAR_SIZE_MB: int = 200
     MAX_AUDIO_SIZE_MB: int = 50
 
-    # CORS
+    # CORS — set via ALLOWED_ORIGINS env var in production
+    # e.g. ALLOWED_ORIGINS=["https://your-app.vercel.app","http://localhost:3000"]
     ALLOWED_ORIGINS: list[str] = ["http://localhost:3000", "https://myavatar.ai"]
+    ALLOWED_ORIGINS_REGEX: str = ""  # optional regex, e.g. "https://.*\\.vercel\\.app"
 
     # Rate limiting
     RATE_LIMIT_PER_MINUTE: int = 60
