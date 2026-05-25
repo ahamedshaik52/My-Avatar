@@ -310,8 +310,70 @@ def build_document():
     )
     add_code_block(doc, structure)
 
-    # 8. Change Log
-    add_heading(doc, "8. Change Log")
+    # 8. Git Workflow
+    add_heading(doc, "8. Git Workflow")
+    doc.add_paragraph(
+        "The repository is hosted at: https://github.com/ahamedshaik52/My-Avatar"
+    )
+
+    add_heading(doc, "8.1  Pushing changes after editing files", level=2)
+    doc.add_paragraph("After making any code changes, run these commands:")
+    add_code_block(
+        doc,
+        "cd C:\\Users\\ahame\\my-avatar\n\n"
+        "# Stage the files you changed (replace with actual file paths)\n"
+        "git add <file-or-folder>\n\n"
+        "# Or stage everything (respects .gitignore automatically)\n"
+        "git add .\n\n"
+        "# Commit with a descriptive message\n"
+        'git commit -m "feat: describe what you changed"\n\n'
+        "# Push to GitHub\n"
+        "git push",
+    )
+
+    add_heading(doc, "8.2  Commit message format", level=2)
+    doc.add_paragraph("Follow these prefixes for clear history:")
+    commit_types = [
+        ("feat:",     "New feature or functionality"),
+        ("fix:",      "Bug fix"),
+        ("refactor:", "Code restructuring (no feature/bug change)"),
+        ("docs:",     "Documentation only"),
+        ("test:",     "Adding or fixing tests"),
+        ("chore:",    "Maintenance (dependencies, config, tooling)"),
+        ("perf:",     "Performance improvement"),
+    ]
+    for prefix, desc in commit_types:
+        p = doc.add_paragraph(style="List Bullet")
+        p.add_run(prefix).bold = True
+        p.add_run(f" {desc}")
+
+    add_heading(doc, "8.3  Files automatically excluded from git", level=2)
+    excluded = [
+        "backend/.env              (secrets - NEVER committed)",
+        "backend/myavatar.db       (local database file)",
+        "backend/media/            (uploaded files)",
+        "backend/.venv/            (Python virtual environment)",
+        "frontend/node_modules/    (Node dependencies)",
+        "frontend/.next/           (Next.js build cache)",
+        "frontend/playwright-report/ and test-results/",
+        "All __pycache__/ directories",
+        "OS files: .DS_Store, Thumbs.db",
+        "Word temp files: ~$*.docx",
+    ]
+    for item in excluded:
+        doc.add_paragraph(item, style="List Bullet")
+
+    add_info_box(
+        doc,
+        "IMPORTANT: Never commit .env files. They contain secret keys. "
+        "Use .env.example (safe template) and .env.local.example to share config structure.",
+        "FEE2E2",
+    )
+
+    doc.add_paragraph()
+
+    # 9. Change Log
+    add_heading(doc, "9. Change Log")
     table2 = doc.add_table(rows=1, cols=3)
     table2.style = "Light List Accent 1"
     hdr2 = table2.rows[0].cells
@@ -342,6 +404,21 @@ def build_document():
             "2026-05-25",
             "Fixed Playwright tests",
             "Axios interceptor guard, middleware.ts, useEffect redirect, worker limit -> all 34 pass",
+        ),
+        (
+            "2026-05-25",
+            "GitHub repo connected",
+            "103 files pushed to https://github.com/ahamedshaik52/My-Avatar (main branch)",
+        ),
+        (
+            "2026-05-25",
+            "Added .gitignore + .gitattributes",
+            "Excludes .env, db, node_modules, .next, build artefacts; enforces LF line endings",
+        ),
+        (
+            "2026-05-25",
+            "Added Git Workflow section",
+            "Section 8 in this guide covers commit format, push commands, and excluded files",
         ),
     ]
     for date, change, details in changes:
