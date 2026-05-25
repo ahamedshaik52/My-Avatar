@@ -1,0 +1,18 @@
+# Normalize line endings to LF in the repo; check out as-is on Windows
+* text=auto eol=lf
+
+# Force binary files to never be changed
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.pdf binary
+*.docx binary
+*.xlsx binary
+*.db binary
+*.sqlite binary
+*.mp4 binary
+*.mp3 binary
+*.wav binary
