@@ -52,6 +52,18 @@ def _run_migrations():
             # projects: add generated_video_id and thumbnail_url if missing
             "ALTER TABLE projects ADD COLUMN IF NOT EXISTS generated_video_id VARCHAR(36) NULL",
             "ALTER TABLE projects ADD COLUMN IF NOT EXISTS thumbnail_url VARCHAR(1000) NULL",
+            # voices: backfill edge-tts external_ids for existing seeded voices
+            # so existing DBs get gender-correct voices without a full re-seed.
+            "UPDATE voices SET external_id='en-US-JennyNeural',      provider='edge-tts' WHERE name='Emma'     AND (external_id IS NULL OR external_id='')",
+            "UPDATE voices SET external_id='en-GB-RyanNeural',       provider='edge-tts' WHERE name='James'    AND (external_id IS NULL OR external_id='')",
+            "UPDATE voices SET external_id='en-AU-NatashaNeural',    provider='edge-tts' WHERE name='Sophia'   AND (external_id IS NULL OR external_id='')",
+            "UPDATE voices SET external_id='en-IN-PrabhatNeural',    provider='edge-tts' WHERE name='Raj'      AND (external_id IS NULL OR external_id='')",
+            "UPDATE voices SET external_id='en-GB-SoniaNeural',      provider='edge-tts' WHERE name='Claire'   AND (external_id IS NULL OR external_id='')",
+            "UPDATE voices SET external_id='en-US-GuyNeural',        provider='edge-tts' WHERE name='Marcus'   AND (external_id IS NULL OR external_id='')",
+            "UPDATE voices SET external_id='en-US-AriaNeural',       provider='edge-tts' WHERE name='Aiko'     AND (external_id IS NULL OR external_id='')",
+            "UPDATE voices SET external_id='en-CA-LiamNeural',       provider='edge-tts' WHERE name='Leo'      AND (external_id IS NULL OR external_id='')",
+            "UPDATE voices SET external_id='en-US-SaraNeural',       provider='edge-tts' WHERE name='Isabella' AND (external_id IS NULL OR external_id='')",
+            "UPDATE voices SET external_id='en-US-ChristopherNeural',provider='edge-tts' WHERE name='David'    AND (external_id IS NULL OR external_id='')",
         ]
         for sql in migrations:
             try:
@@ -75,17 +87,19 @@ def _seed_voices():
         if db.query(Voice).count() > 0:
             return
 
+        # external_id = edge-tts neural voice name (gender + accent accurate, no API key needed).
+        # When an ElevenLabs key is set, replace external_id with the real ElevenLabs voice ID.
         built_in = [
-            {"name": "Emma", "gender": "female", "accent": "american", "description": "Warm, friendly professional voice."},
-            {"name": "James", "gender": "male", "accent": "british", "description": "Authoritative, clear British tone."},
-            {"name": "Sophia", "gender": "female", "accent": "australian", "description": "Upbeat and engaging Aussie voice."},
-            {"name": "Raj", "gender": "male", "accent": "indian", "description": "Clear, articulate with subtle Indian accent."},
-            {"name": "Claire", "gender": "female", "accent": "british", "description": "Elegant, trustworthy British female."},
-            {"name": "Marcus", "gender": "male", "accent": "american", "description": "Deep, confident American narrator."},
-            {"name": "Aiko", "gender": "female", "accent": "neutral", "description": "Gentle, neutral international tone."},
-            {"name": "Leo", "gender": "male", "accent": "canadian", "description": "Friendly, approachable Canadian voice."},
-            {"name": "Isabella", "gender": "female", "accent": "american", "description": "Energetic, youthful American voice."},
-            {"name": "David", "gender": "male", "accent": "neutral", "description": "Professional, clear neutral voice."},
+            {"name": "Emma",    "gender": "female", "accent": "american",   "external_id": "en-US-JennyNeural",     "description": "Warm, friendly professional voice."},
+            {"name": "James",   "gender": "male",   "accent": "british",    "external_id": "en-GB-RyanNeural",      "description": "Authoritative, clear British tone."},
+            {"name": "Sophia",  "gender": "female", "accent": "australian", "external_id": "en-AU-NatashaNeural",   "description": "Upbeat and engaging Aussie voice."},
+            {"name": "Raj",     "gender": "male",   "accent": "indian",     "external_id": "en-IN-PrabhatNeural",   "description": "Clear, articulate with subtle Indian accent."},
+            {"name": "Claire",  "gender": "female", "accent": "british",    "external_id": "en-GB-SoniaNeural",     "description": "Elegant, trustworthy British female."},
+            {"name": "Marcus",  "gender": "male",   "accent": "american",   "external_id": "en-US-GuyNeural",       "description": "Deep, confident American narrator."},
+            {"name": "Aiko",    "gender": "female", "accent": "neutral",    "external_id": "en-US-AriaNeural",      "description": "Gentle, neutral international tone."},
+            {"name": "Leo",     "gender": "male",   "accent": "canadian",   "external_id": "en-CA-LiamNeural",      "description": "Friendly, approachable Canadian voice."},
+            {"name": "Isabella","gender": "female", "accent": "american",   "external_id": "en-US-SaraNeural",      "description": "Energetic, youthful American voice."},
+            {"name": "David",   "gender": "male",   "accent": "neutral",    "external_id": "en-US-ChristopherNeural","description": "Professional, clear neutral voice."},
         ]
 
         for v in built_in:
@@ -94,9 +108,10 @@ def _seed_voices():
                 gender=v["gender"],
                 accent=v["accent"],
                 language="en",
-                preview_url=f"/media/previews/{v['name'].lower()}.mp3",
+                external_id=v["external_id"],
+                preview_url=f"/api/voices/preview-static/{v['name'].lower()}",
                 description=v["description"],
-                provider="builtin",
+                provider="edge-tts",
                 is_cloneable=False,
                 is_active=True,
             ))

@@ -3,16 +3,19 @@ Video generation pipeline — plain synchronous function.
 Runs directly in FastAPI BackgroundTasks (no Celery/Redis dependency).
 Pipeline: download assets → compose video (FFmpeg) → upload to storage → persist DB record.
 """
+import asyncio
 import os
 import subprocess
 import shutil
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 import structlog
 
 from app.core.config import get_settings
 from app.core.storage import storage
+from app.services.lipsync_service import lipsync_service
 
 settings = get_settings()
 log = structlog.get_logger(__name__)
@@ -155,9 +158,12 @@ def process_video_job(
             if os.path.getsize(audio_local) == 0:
                 raise ValueError("Audio file is empty")
 
-            # ── Compose video ─────────────────────────────────────────────────
-            update("generating_lipsync", 40, "Composing video")
-            _compose_video(avatar_local, audio_local, output_path)
+            # ── Lip-sync / compose video ─────────────────────────────────────
+            # Uses D-ID API when D_ID_API_KEY is set (real lip sync).
+            # Falls back to SadTalker if SADTALKER_MODEL_PATH exists.
+            # Falls back to static FFmpeg composition otherwise.
+            update("generating_lipsync", 40, "Generating lip sync")
+            asyncio.run(lipsync_service.generate(avatar_local, audio_local, output_path))
 
             if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
                 raise RuntimeError("FFmpeg produced an empty output file")

@@ -25,3 +25,5 @@ Pillow==10.4.0
 elevenlabs==1.7.0
 requests==2.32.3
 gtts==2.5.1
+edge-tts>=6.1.9
+mutagen>=1.47.0

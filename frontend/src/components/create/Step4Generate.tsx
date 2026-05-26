@@ -14,16 +14,13 @@ import { getStatusLabel, formatFileSize } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import type { JobStep } from "@/types";
 
+// These keys MUST match the status values the backend actually emits.
+// Removed phantom steps (generating_audio, normalizing_audio, interpolating_frames,
+// upscaling, color_grading, noise_cleanup) that the worker never sets.
 const PIPELINE_STEPS: { key: JobStep; label: string; icon: string }[] = [
-  { key: "validating", label: "Validating inputs", icon: "🔍" },
-  { key: "generating_audio", label: "Generating speech", icon: "🎙️" },
-  { key: "normalizing_audio", label: "Normalizing audio", icon: "🎚️" },
-  { key: "generating_lipsync", label: "Rendering lip sync", icon: "👄" },
-  { key: "interpolating_frames", label: "Frame interpolation", icon: "🎬" },
-  { key: "upscaling", label: "Upscaling to 4K", icon: "✨" },
-  { key: "color_grading", label: "Cinematic color grade", icon: "🎨" },
-  { key: "noise_cleanup", label: "Noise cleanup", icon: "🔊" },
-  { key: "exporting", label: "Exporting MP4", icon: "📦" },
+  { key: "validating",        label: "Downloading & validating assets", icon: "🔍" },
+  { key: "generating_lipsync", label: "Composing avatar video",         icon: "👄" },
+  { key: "exporting",         label: "Encoding & uploading MP4",        icon: "📦" },
 ];
 
 export function Step4Generate() {
