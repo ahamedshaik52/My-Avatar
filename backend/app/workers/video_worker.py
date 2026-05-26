@@ -57,10 +57,16 @@ def _compose_video(avatar_path: str, audio_path: str, output_path: str) -> None:
     _run_ffmpeg(
         "-loop", "1", "-i", avatar_path,
         "-i", audio_path,
+        # Scale to max 720p — keeps memory and CPU low on free-tier hosts.
+        # force_original_aspect_ratio=decrease preserves portrait/landscape;
+        # pad fills remaining space with black bars.
+        "-vf", "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2",
         "-c:v", "libx264",
+        "-preset", "ultrafast",   # 10-20x faster than default 'medium'
         "-tune", "stillimage",
+        "-crf", "28",             # Acceptable quality, lower memory than CRF 18
         "-c:a", "aac",
-        "-b:a", "192k",
+        "-b:a", "128k",
         "-pix_fmt", "yuv420p",
         "-shortest",
         output_path,
