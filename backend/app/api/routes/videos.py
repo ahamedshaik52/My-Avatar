@@ -1,4 +1,3 @@
-import asyncio
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
@@ -19,38 +18,26 @@ log = structlog.get_logger(__name__)
 router = APIRouter(prefix="/video", tags=["video"])
 
 
-def _dispatch_celery(job_id: str, avatar_key: str, audio_key: str, resolution: str, project_id: str) -> str | None:
-    """Try to dispatch via Celery. Returns task_id or None if broker unavailable."""
-    try:
-        from app.workers.video_worker import process_video_job
-        task = process_video_job.delay(
-            job_id=job_id,
-            avatar_storage_key=avatar_key,
-            audio_storage_key=audio_key,
-            resolution=resolution,
-            project_id=project_id,
-        )
-        return task.id
-    except Exception as exc:
-        log.warning("celery.dispatch_failed", job_id=job_id, error=str(exc))
-        return None
-
-
 def _run_video_job_background(
-    job_id: str, avatar_key: str, audio_key: str, resolution: str, project_id: str
+    job_id: str,
+    avatar_storage_key: str,
+    audio_storage_key: str,
+    resolution: str,
+    project_id: str,
 ) -> None:
-    """In-process fallback: run the video pipeline when Celery broker is unavailable."""
+    """Run the video pipeline in a FastAPI background thread (no Celery/Redis needed)."""
     try:
         from app.workers.video_worker import process_video_job
+        # Call the task function directly (bypasses the broker, runs in-process)
         process_video_job(
             job_id=job_id,
-            avatar_storage_key=avatar_key,
-            audio_storage_key=audio_key,
+            avatar_storage_key=avatar_storage_key,
+            audio_storage_key=audio_storage_key,
             resolution=resolution,
             project_id=project_id,
         )
     except Exception as exc:
-        log.error("video_job.inline_failed", job_id=job_id, error=str(exc))
+        log.error("video_job.background_failed", job_id=job_id, error=str(exc))
 
 
 @router.post("/generate", response_model=VideoJobOut, status_code=202)
@@ -80,45 +67,24 @@ async def generate_video(
     if not audio:
         raise HTTPException(status_code=404, detail="Audio not found")
 
-    # Create job record
+    # Create job record — returned immediately so the client can poll status
     job = VideoJob(project_id=payload.project_id, status="queued", progress=0, current_step="Queued")
     db.add(job)
     project.status = "processing"
     db.commit()
     db.refresh(job)
 
-    job_id = job.id
-    avatar_key = avatar.storage_key
-    audio_key = audio.storage_key
+    # Dispatch in-process background task (no Redis/Celery dependency)
+    background_tasks.add_task(
+        _run_video_job_background,
+        job_id=job.id,
+        avatar_storage_key=avatar.storage_key,
+        audio_storage_key=audio.storage_key,
+        resolution=payload.resolution,
+        project_id=payload.project_id,
+    )
 
-    # Try Celery (with a 5-second timeout); fall back to in-process BackgroundTask
-    try:
-        loop = asyncio.get_event_loop()
-        task_id = await asyncio.wait_for(
-            loop.run_in_executor(None, _dispatch_celery, job_id, avatar_key, audio_key, payload.resolution, payload.project_id),
-            timeout=5.0,
-        )
-    except asyncio.TimeoutError:
-        task_id = None
-        log.warning("celery.dispatch_timeout", job_id=job_id)
-
-    if task_id:
-        job.celery_task_id = task_id
-        db.commit()
-        db.refresh(job)
-    else:
-        # Celery unavailable — process video in FastAPI background task
-        log.info("video_job.using_background_task", job_id=job_id)
-        background_tasks.add_task(
-            _run_video_job_background,
-            job_id=job_id,
-            avatar_key=avatar_key,
-            audio_key=audio_key,
-            resolution=payload.resolution,
-            project_id=payload.project_id,
-        )
-        db.refresh(job)
-
+    log.info("video_job.queued", job_id=job.id, project_id=payload.project_id)
     return job
 
 
