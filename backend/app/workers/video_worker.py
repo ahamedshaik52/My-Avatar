@@ -156,6 +156,11 @@ def process_video_job(
             )
             db.add(video)
 
+            # Link completed video back to the job so the frontend can fetch it
+            job_record = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+            if job_record:
+                job_record.video_id = video.id
+
             project = db.query(Project).filter(Project.id == project_id).first()
             if project:
                 project.status = "completed"

@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 import type { Voice } from "@/types";
 
 export function Step3Voice() {
-  const { selectedVoice, script, avatar, setVoice, setGeneratedAudio, setStep } = useCreateVideoStore();
+  const { selectedVoice, script, avatar, projectId, setVoice, setGeneratedAudio, setStep } = useCreateVideoStore();
   const [search, setSearch] = useState("");
   const [genderFilter, setGenderFilter] = useState<string>("all");
   const [playingId, setPlayingId] = useState<string | null>(null);
@@ -49,10 +49,10 @@ export function Step3Voice() {
   };
 
   const generateAudio = async () => {
-    if (!selectedVoice || !avatar) return;
+    if (!selectedVoice || !projectId) return;
     setGenerating(true);
     try {
-      const audio = await voiceApi.generate(avatar.id, selectedVoice.id, script);
+      const audio = await voiceApi.generate(projectId, selectedVoice.id, script);
       setGeneratedAudio(audio);
       toast.success("Voice generated! Ready to create video.");
       setStep(4);

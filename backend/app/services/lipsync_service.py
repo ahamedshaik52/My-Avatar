@@ -4,7 +4,7 @@ Primary: D-ID API (production).
 Fallback: SadTalker (local open-source model).
 Both produce an MP4 of the avatar speaking the audio.
 """
-import time
+import asyncio
 import httpx
 import structlog
 from pathlib import Path
@@ -73,7 +73,7 @@ class LipSyncService:
                     break
                 if data.get("status") == "error":
                     raise RuntimeError(f"D-ID error: {data.get('error')}")
-                time.sleep(3)
+                await asyncio.sleep(3)
             else:
                 raise TimeoutError("D-ID timed out")
 
@@ -88,7 +88,7 @@ class LipSyncService:
         SadTalker must be installed at SADTALKER_MODEL_PATH.
         Falls back to an ffmpeg-only static video if SadTalker is not available.
         """
-        import subprocess, asyncio
+        import subprocess
 
         sadtalker_path = Path(settings.SADTALKER_MODEL_PATH)
         if sadtalker_path.exists():
@@ -99,7 +99,7 @@ class LipSyncService:
                 "--result_dir", str(Path(output_path).parent),
                 "--still", "--preprocess", "full",
             ]
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             proc = await loop.run_in_executor(
                 None,
                 lambda: subprocess.run(cmd, capture_output=True, text=True),
@@ -112,9 +112,9 @@ class LipSyncService:
 
     async def _ffmpeg_static_fallback(self, avatar_path: str, audio_path: str, output_path: str) -> str:
         """Compose avatar image + audio into an MP4 (no real lip sync)."""
-        import ffmpeg, asyncio
+        import ffmpeg
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         def _run():
             audio_info = ffmpeg.probe(audio_path)

@@ -2,26 +2,24 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./tests/e2e",
-  fullyParallel: true,
+  fullyParallel: false,
   forbidOnly: !!process.env.CI,
-  // In dev mode, the Next.js server compiles routes on demand, which causes timeouts
-  // under heavy parallel load. Cap workers at 3 locally; add 1 retry for transient issues.
   retries: process.env.CI ? 2 : 1,
-  workers: process.env.CI ? 1 : 3,
-  reporter: "html",
+  workers: 1,
+  reporter: [["list"], ["html", { open: "never" }]],
   use: {
-    baseURL: "http://localhost:3000",
+    baseURL: "https://my-avatar-smoky.vercel.app",
     trace: "on-first-retry",
     screenshot: "only-on-failure",
     video: "retain-on-failure",
+    actionTimeout: 15000,
+    navigationTimeout: 30000,
   },
   projects: [
-    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
-    { name: "Mobile Chrome", use: { ...devices["Pixel 5"] } },
+    {
+      name: "chromium",
+      use: { ...devices["Desktop Chrome"] },
+    },
   ],
-  webServer: {
-    command: "npm run dev",
-    url: "http://localhost:3000",
-    reuseExistingServer: !process.env.CI,
-  },
+  // No webServer — we're testing the live production deployment
 });

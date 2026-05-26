@@ -19,6 +19,7 @@ class VideoJobOut(BaseModel):
     progress: int
     current_step: str
     error_message: str | None
+    video_id: str | None = None
     created_at: datetime
     updated_at: datetime
 

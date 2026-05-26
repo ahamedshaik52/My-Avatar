@@ -61,7 +61,7 @@ class TTSService:
             tts.write_to_fp(buf)
             return buf.getvalue()
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, _gen)
 
 

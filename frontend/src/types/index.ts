@@ -108,6 +108,7 @@ export interface VideoJob {
   progress: number;
   current_step: string;
   error_message?: string;
+  video_id?: string;
   created_at: string;
   updated_at: string;
 }

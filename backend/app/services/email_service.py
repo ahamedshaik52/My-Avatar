@@ -52,14 +52,16 @@ def _send_smtp(to: str, subject: str, html: str, text: str) -> None:
     context = ssl.create_default_context()
     try:
         if settings.SMTP_USE_TLS:
-            with smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT, context=context) as server:
+            # STARTTLS — correct for port 587 (the default)
+            with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT) as server:
+                server.ehlo()
+                server.starttls(context=context)
                 if settings.SMTP_USER and settings.SMTP_PASSWORD:
                     server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
                 server.sendmail(settings.EMAIL_FROM_ADDRESS, to, msg.as_string())
         else:
-            with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT) as server:
-                server.ehlo()
-                server.starttls(context=context)
+            # Implicit SSL — use for port 465
+            with smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT, context=context) as server:
                 if settings.SMTP_USER and settings.SMTP_PASSWORD:
                     server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
                 server.sendmail(settings.EMAIL_FROM_ADDRESS, to, msg.as_string())

@@ -67,7 +67,7 @@ export function Step4Generate() {
         const updated = await videoApi.status(videoJob.id);
         setVideoJob(updated);
         if (updated.status === "completed") {
-          const video = await videoApi.get(updated.project_id);
+          const video = await videoApi.get(updated.video_id!);
           setGeneratedVideo(video);
           toast.success("Your video is ready!");
           clearInterval(pollRef.current!);

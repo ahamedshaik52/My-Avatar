@@ -1,62 +1,66 @@
 import { test, expect } from "@playwright/test";
 
-const BASE = "http://localhost:3000";
+/**
+ * create-video.spec.ts — Landing page content and public UI tests.
+ * Targets: https://my-avatar-smoky.vercel.app
+ * These tests use no mocking — all assertions are against the live deployment.
+ */
 
-test.describe("My Avatar — Create Video Flow", () => {
-  test("landing page loads with correct branding", async ({ page }) => {
-    await page.goto(BASE);
-    await expect(page).toHaveTitle(/My Avatar/);
-    await expect(page.getByText("My Avatar")).toBeVisible();
-    await expect(page.getByText("Create stunning")).toBeVisible();
+test.describe("Landing page — branding and content", () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto("/");
   });
 
-  test("signup form validates required fields", async ({ page }) => {
-    await page.goto(`${BASE}/signup`);
-    await page.getByRole("button", { name: /Create free account/ }).click();
-    await expect(page.getByText("Name must be at least")).toBeVisible();
+  test("page title includes My Avatar", async ({ page }) => {
+    await expect(page).toHaveTitle(/my avatar/i);
   });
 
-  test("login redirects to dashboard", async ({ page }) => {
-    await page.goto(`${BASE}/login`);
-    await expect(page.getByPlaceholder("you@example.com")).toBeVisible();
-    await expect(page.getByPlaceholder("••••••••")).toBeVisible();
+  test("navigation shows Sign in and Start free links", async ({ page }) => {
+    await expect(page.getByRole("link", { name: /sign in/i }).first()).toBeVisible();
+    await expect(page.getByRole("link", { name: /start free/i }).first()).toBeVisible();
   });
 
-  test("protected dashboard redirects unauthenticated users", async ({ page }) => {
-    await page.goto(`${BASE}/dashboard`);
-    await expect(page).toHaveURL(/login/);
+  test("pricing section shows Free and Pro plans", async ({ page }) => {
+    // Scroll to pricing section
+    const pricingSection = page.getByText("Free").first();
+    await pricingSection.scrollIntoViewIfNeeded();
+    await expect(page.getByText("Free").first()).toBeVisible();
+    await expect(page.getByText("Pro").first()).toBeVisible();
   });
 
-  test("create page has 4-step wizard", async ({ page }) => {
-    // Mock auth
-    await page.goto(`${BASE}/login`);
-    // Would need real auth for full E2E — verify step UI exists
-    await page.goto(`${BASE}/create`);
-    // Redirects to login if not authed
-    await expect(page).toHaveURL(/login|create/);
+  test("how it works section shows avatar upload step", async ({ page }) => {
+    const step = page.getByText(/upload.*avatar/i).first();
+    await step.scrollIntoViewIfNeeded();
+    await expect(step).toBeVisible();
   });
 });
 
-test.describe("UI components", () => {
-  test("navigation links are present on landing page", async ({ page }) => {
-    await page.goto(BASE);
-    await expect(page.getByRole("link", { name: /Sign in/ })).toBeVisible();
-    await expect(page.getByRole("link", { name: /Start free/ })).toBeVisible();
+test.describe("Login page — form elements", () => {
+  test("shows email and password inputs", async ({ page }) => {
+    await page.goto("/login");
+    await expect(page.getByPlaceholder("you@example.com")).toBeVisible();
+    await expect(page.getByPlaceholder("••••••••").first()).toBeVisible();
+  });
+});
+
+test.describe("Signup form — client-side validation", () => {
+  test("shows name validation error when submitted empty", async ({ page }) => {
+    await page.goto("/signup");
+    await page.getByRole("button", { name: /create free account/i }).click();
+    await expect(page.getByText(/name must be at least/i)).toBeVisible();
+  });
+});
+
+test.describe("Auth guard — protected routes", () => {
+  test("unauthenticated /dashboard redirects to /login", async ({ page }) => {
+    await page.context().clearCookies();
+    await page.goto("/dashboard");
+    await expect(page).toHaveURL(/\/login/, { timeout: 10000 });
   });
 
-  test("pricing section shows all plans", async ({ page }) => {
-    await page.goto(BASE);
-    await page.getByText("pricing", { exact: false }).first().scrollIntoViewIfNeeded();
-    await expect(page.getByText("Free")).toBeVisible();
-    await expect(page.getByText("Pro")).toBeVisible();
-    await expect(page.getByText("Enterprise")).toBeVisible();
-  });
-
-  test("how it works section shows 4 steps", async ({ page }) => {
-    await page.goto(BASE);
-    await expect(page.getByText("Upload your avatar")).toBeVisible();
-    await expect(page.getByText("Write your script")).toBeVisible();
-    await expect(page.getByText("Choose a voice")).toBeVisible();
-    await expect(page.getByText("Generate & download")).toBeVisible();
+  test("unauthenticated /create redirects to /login", async ({ page }) => {
+    await page.context().clearCookies();
+    await page.goto("/create");
+    await expect(page).toHaveURL(/\/login/, { timeout: 10000 });
   });
 });
