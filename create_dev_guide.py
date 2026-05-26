@@ -310,13 +310,50 @@ def build_document():
     )
     add_code_block(doc, structure)
 
-    # 8. Git Workflow
-    add_heading(doc, "8. Git Workflow")
+    # 8. Production URLs
+    add_heading(doc, "8. Production URLs (Live Deployment)")
+
+    add_info_box(
+        doc,
+        "Both services are deployed and publicly accessible. "
+        "Frontend auto-deploys from GitHub (main branch) via Vercel. "
+        "Backend is hosted on Railway.",
+        "D1FAE5",
+    )
+    doc.add_paragraph()
+
+    table_prod = doc.add_table(rows=1, cols=3)
+    table_prod.style = "Light List Accent 1"
+    hdr_prod = table_prod.rows[0].cells
+    hdr_prod[0].text = "Service"
+    hdr_prod[1].text = "URL"
+    hdr_prod[2].text = "Platform"
+    for cell in hdr_prod:
+        for run in cell.paragraphs[0].runs:
+            run.bold = True
+
+    prod_rows = [
+        ("Frontend (Next.js)",      "https://my-avatar-smoky.vercel.app",                  "Vercel (Hobby)"),
+        ("Backend API (FastAPI)",   "https://my-avatar-production.up.railway.app",          "Railway"),
+        ("API Health Check",        "https://my-avatar-production.up.railway.app/api/health", "Railway"),
+        ("API Swagger Docs",        "https://my-avatar-production.up.railway.app/api/docs",   "Railway"),
+        ("GitHub Repository",       "https://github.com/ahamedshaik52/My-Avatar",           "GitHub"),
+    ]
+    for label, url, platform in prod_rows:
+        row = table_prod.add_row()
+        row.cells[0].text = label
+        row.cells[1].text = url
+        row.cells[2].text = platform
+
+    doc.add_paragraph()
+
+    # 9. Git Workflow
+    add_heading(doc, "9. Git Workflow")
     doc.add_paragraph(
         "The repository is hosted at: https://github.com/ahamedshaik52/My-Avatar"
     )
 
-    add_heading(doc, "8.1  Pushing changes after editing files", level=2)
+    add_heading(doc, "9.1  Pushing changes after editing files", level=2)
     doc.add_paragraph("After making any code changes, run these commands:")
     add_code_block(
         doc,
@@ -331,7 +368,7 @@ def build_document():
         "git push",
     )
 
-    add_heading(doc, "8.2  Commit message format", level=2)
+    add_heading(doc, "9.2  Commit message format", level=2)
     doc.add_paragraph("Follow these prefixes for clear history:")
     commit_types = [
         ("feat:",     "New feature or functionality"),
@@ -347,7 +384,7 @@ def build_document():
         p.add_run(prefix).bold = True
         p.add_run(f" {desc}")
 
-    add_heading(doc, "8.3  Files automatically excluded from git", level=2)
+    add_heading(doc, "9.3  Files automatically excluded from git", level=2)
     excluded = [
         "backend/.env              (secrets - NEVER committed)",
         "backend/myavatar.db       (local database file)",
@@ -372,8 +409,8 @@ def build_document():
 
     doc.add_paragraph()
 
-    # 9. Change Log
-    add_heading(doc, "9. Change Log")
+    # 10. Change Log
+    add_heading(doc, "10. Change Log")
     table2 = doc.add_table(rows=1, cols=3)
     table2.style = "Light List Accent 1"
     hdr2 = table2.rows[0].cells
@@ -418,7 +455,17 @@ def build_document():
         (
             "2026-05-25",
             "Added Git Workflow section",
-            "Section 8 in this guide covers commit format, push commands, and excluded files",
+            "Section 9 in this guide covers commit format, push commands, and excluded files",
+        ),
+        (
+            "2026-05-25",
+            "Backend deployed to Railway",
+            "FastAPI + Postgres + Redis live at https://my-avatar-production.up.railway.app",
+        ),
+        (
+            "2026-05-25",
+            "Frontend deployed to Vercel",
+            "Next.js app live at https://my-avatar-smoky.vercel.app (auto-deploys from GitHub main)",
         ),
     ]
     for date, change, details in changes:
