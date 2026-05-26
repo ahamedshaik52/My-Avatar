@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard, PlusCircle, FolderOpen, Settings,
-  ChevronLeft, ChevronRight, HelpCircle, Zap,
+  ChevronLeft, ChevronRight, HelpCircle,
 } from "lucide-react";
 import { Logo } from "@/components/shared/Logo";
 import { cn } from "@/lib/utils";
@@ -66,30 +66,6 @@ export function DashboardSidebar() {
           );
         })}
       </nav>
-
-      {/* Upgrade banner */}
-      <AnimatePresence>
-        {!collapsed && user?.plan === "free" && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="mx-3 mb-3 p-4 rounded-xl bg-gradient-to-br from-avatar-purple/20 to-avatar-cyan/10 border border-avatar-purple/20"
-          >
-            <div className="flex items-center gap-2 mb-2">
-              <Zap size={14} className="text-yellow-400" />
-              <span className="text-xs font-semibold text-foreground">Upgrade to Pro</span>
-            </div>
-            <p className="text-xs text-muted-foreground mb-3">Unlock 4K, unlimited videos & voice cloning.</p>
-            <Link
-              href="/settings?tab=billing"
-              className="block w-full text-center text-xs py-2 px-3 rounded-lg bg-gradient-to-r from-avatar-purple to-avatar-cyan text-white font-medium hover:opacity-90 transition-opacity"
-            >
-              Upgrade now
-            </Link>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* Help */}
       <div className="p-3 border-t border-avatar-dark-border">

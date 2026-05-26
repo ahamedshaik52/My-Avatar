@@ -106,7 +106,7 @@ export function Step1Avatar() {
             <div className="flex items-center gap-3 mt-3 p-3 rounded-lg bg-green-400/10 border border-green-400/20">
               <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
               <span className="text-sm text-green-400 font-medium">Avatar ready</span>
-              <span className="text-xs text-muted-foreground ml-auto">{formatFileSize(avatar.width ?? 0)}</span>
+              <span className="text-xs text-muted-foreground ml-auto">{formatFileSize(avatar.file_size ?? 0)}</span>
             </div>
           </div>
         ) : (

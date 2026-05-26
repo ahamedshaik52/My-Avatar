@@ -13,8 +13,18 @@ from app.core.config import get_settings
 settings = get_settings()
 log = structlog.get_logger(__name__)
 
+import re
+
 # Words-per-minute estimate for duration calculation
 _WPM = 140
+
+# UUID pattern — our seeded voices use plain UUIDs, not ElevenLabs IDs
+_UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE)
+
+
+def _is_local_uuid(value: str) -> bool:
+    """Return True if value looks like a local database UUID rather than an ElevenLabs voice ID."""
+    return bool(_UUID_RE.match(value))
 
 
 def _estimate_duration(text: str) -> float:
@@ -23,13 +33,18 @@ def _estimate_duration(text: str) -> float:
 
 
 class TTSService:
-    async def synthesize(self, voice_id: str, text: str) -> bytes:
-        """Return raw audio bytes (MP3)."""
-        if settings.ELEVENLABS_API_KEY:
+    async def synthesize(self, voice_id: str | None, text: str) -> bytes:
+        """Return raw audio bytes (MP3).
+
+        Uses ElevenLabs only when an API key is set AND a real ElevenLabs voice_id
+        is provided (not None and not a plain UUID from our local seed data).
+        Falls back to gTTS otherwise.
+        """
+        if settings.ELEVENLABS_API_KEY and voice_id and not _is_local_uuid(voice_id):
             return await self._elevenlabs(voice_id, text)
         return await self._gtts_fallback(text)
 
-    async def synthesize_with_duration(self, voice_id: str, text: str) -> Tuple[bytes, float]:
+    async def synthesize_with_duration(self, voice_id: str | None, text: str) -> Tuple[bytes, float]:
         audio = await self.synthesize(voice_id, text)
         duration = _estimate_duration(text)
         return audio, duration

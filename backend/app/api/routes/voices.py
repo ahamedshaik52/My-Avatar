@@ -37,7 +37,7 @@ async def preview_voice(request: Request, payload: PreviewVoiceRequest, db: Sess
 
     preview_text = (payload.text or "Hello! This is a preview of my voice.")[:200]
     try:
-        audio_bytes = await tts_service.synthesize(voice.external_id or voice.id, preview_text)
+        audio_bytes = await tts_service.synthesize(voice.external_id, preview_text)
         key = storage.generate_key("previews", ".mp3")
         url = storage.save(key, audio_bytes, "audio/mpeg")
         return {"url": url}
@@ -62,7 +62,7 @@ async def generate_voice(
 
     try:
         audio_bytes, duration = await tts_service.synthesize_with_duration(
-            voice.external_id or voice.id, payload.text
+            voice.external_id, payload.text
         )
         key = storage.generate_key(f"audio/{current_user.id}", ".mp3")
         url = storage.save(key, audio_bytes, "audio/mpeg")
