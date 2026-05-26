@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     SECRET_KEY: str = _INSECURE_DEFAULT
     ALGORITHM: str = "HS256"
     # Short-lived access tokens + refresh token flow keeps blast radius small on theft
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60  # 1 hour
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 10080  # 7 days
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
 
     @field_validator("SECRET_KEY")
