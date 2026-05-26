@@ -1,5 +1,6 @@
+import asyncio
 from datetime import datetime, timezone, timedelta
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.rate_limit import limiter
@@ -11,16 +12,53 @@ from app.models.avatar import Avatar
 from app.models.voice import GeneratedAudio
 from app.models.video import VideoJob, GeneratedVideo, DownloadHistory
 from app.schemas.video import GenerateVideoRequest, VideoJobOut, GeneratedVideoOut, DownloadUrlOut
-from app.workers.video_worker import process_video_job
+import structlog
+
+log = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/video", tags=["video"])
 
 
+def _dispatch_celery(job_id: str, avatar_key: str, audio_key: str, resolution: str, project_id: str) -> str | None:
+    """Try to dispatch via Celery. Returns task_id or None if broker unavailable."""
+    try:
+        from app.workers.video_worker import process_video_job
+        task = process_video_job.delay(
+            job_id=job_id,
+            avatar_storage_key=avatar_key,
+            audio_storage_key=audio_key,
+            resolution=resolution,
+            project_id=project_id,
+        )
+        return task.id
+    except Exception as exc:
+        log.warning("celery.dispatch_failed", job_id=job_id, error=str(exc))
+        return None
+
+
+def _run_video_job_background(
+    job_id: str, avatar_key: str, audio_key: str, resolution: str, project_id: str
+) -> None:
+    """In-process fallback: run the video pipeline when Celery broker is unavailable."""
+    try:
+        from app.workers.video_worker import process_video_job
+        process_video_job(
+            job_id=job_id,
+            avatar_storage_key=avatar_key,
+            audio_storage_key=audio_key,
+            resolution=resolution,
+            project_id=project_id,
+        )
+    except Exception as exc:
+        log.error("video_job.inline_failed", job_id=job_id, error=str(exc))
+
+
 @router.post("/generate", response_model=VideoJobOut, status_code=202)
 @limiter.limit("10/minute")
-def generate_video(
+async def generate_video(
     request: Request,
     payload: GenerateVideoRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -32,7 +70,7 @@ def generate_video(
     if not avatar:
         raise HTTPException(status_code=404, detail="Avatar not found")
 
-    # Scope by project ownership to prevent IDOR — audio must belong to a project the user owns
+    # Scope by project ownership to prevent IDOR
     audio = (
         db.query(GeneratedAudio)
         .join(Project, GeneratedAudio.project_id == Project.id)
@@ -42,24 +80,45 @@ def generate_video(
     if not audio:
         raise HTTPException(status_code=404, detail="Audio not found")
 
-    # Create job
+    # Create job record
     job = VideoJob(project_id=payload.project_id, status="queued", progress=0, current_step="Queued")
     db.add(job)
     project.status = "processing"
     db.commit()
     db.refresh(job)
 
-    # Dispatch celery task
-    task = process_video_job.delay(
-        job_id=job.id,
-        avatar_storage_key=avatar.storage_key,
-        audio_storage_key=audio.storage_key,
-        resolution=payload.resolution,
-        project_id=payload.project_id,
-    )
-    job.celery_task_id = task.id
-    db.commit()
-    db.refresh(job)
+    job_id = job.id
+    avatar_key = avatar.storage_key
+    audio_key = audio.storage_key
+
+    # Try Celery (with a 5-second timeout); fall back to in-process BackgroundTask
+    try:
+        loop = asyncio.get_event_loop()
+        task_id = await asyncio.wait_for(
+            loop.run_in_executor(None, _dispatch_celery, job_id, avatar_key, audio_key, payload.resolution, payload.project_id),
+            timeout=5.0,
+        )
+    except asyncio.TimeoutError:
+        task_id = None
+        log.warning("celery.dispatch_timeout", job_id=job_id)
+
+    if task_id:
+        job.celery_task_id = task_id
+        db.commit()
+        db.refresh(job)
+    else:
+        # Celery unavailable — process video in FastAPI background task
+        log.info("video_job.using_background_task", job_id=job_id)
+        background_tasks.add_task(
+            _run_video_job_background,
+            job_id=job_id,
+            avatar_key=avatar_key,
+            audio_key=audio_key,
+            resolution=payload.resolution,
+            project_id=payload.project_id,
+        )
+        db.refresh(job)
+
     return job
 
 
