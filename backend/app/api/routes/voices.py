@@ -1,7 +1,8 @@
 from pathlib import Path
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File
 from sqlalchemy.orm import Session
 from app.core.database import get_db
+from app.core.rate_limit import limiter
 from app.core.security import get_current_user
 from app.core.storage import storage
 from app.core.config import get_settings
@@ -28,7 +29,8 @@ def list_voices(db: Session = Depends(get_db), _: User = Depends(get_current_use
 
 
 @router.post("/preview")
-async def preview_voice(payload: PreviewVoiceRequest, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+@limiter.limit("10/minute")
+async def preview_voice(request: Request, payload: PreviewVoiceRequest, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
     voice = db.query(Voice).filter(Voice.id == payload.voice_id, Voice.is_active == True).first()
     if not voice:
         raise HTTPException(status_code=404, detail="Voice not found")
@@ -44,7 +46,9 @@ async def preview_voice(payload: PreviewVoiceRequest, db: Session = Depends(get_
 
 
 @router.post("/generate", response_model=GeneratedAudioOut)
+@limiter.limit("10/minute")
 async def generate_voice(
+    request: Request,
     payload: GenerateVoiceRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),

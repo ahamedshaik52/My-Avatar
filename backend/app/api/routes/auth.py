@@ -1,12 +1,13 @@
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.rate_limit import limiter
 from app.core.security import (
     hash_password, verify_password, create_access_token, get_current_user
 )
@@ -23,7 +24,8 @@ settings = get_settings()
 # ─── Register ─────────────────────────────────────────────────────────────────
 
 @router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
-def register(payload: UserCreate, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+def register(request: Request, payload: UserCreate, db: Session = Depends(get_db)):
     if db.query(User).filter(User.email == payload.email).first():
         raise HTTPException(status_code=400, detail="Email already registered")
 
@@ -41,7 +43,8 @@ def register(payload: UserCreate, db: Session = Depends(get_db)):
 # ─── Login ────────────────────────────────────────────────────────────────────
 
 @router.post("/login", response_model=Token)
-def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+def login(request: Request, form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == form.username, User.is_active == True).first()
     if not user or not verify_password(form.password, user.hashed_password):
         raise HTTPException(
@@ -67,7 +70,8 @@ class ForgotPasswordRequest(BaseModel):
 
 
 @router.post("/forgot-password", status_code=status.HTTP_200_OK)
-def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(get_db)):
+@limiter.limit("3/minute")
+def forgot_password(request: Request, payload: ForgotPasswordRequest, db: Session = Depends(get_db)):
     # Always return 200 — never reveal whether an email is registered
     user = db.query(User).filter(User.email == payload.email, User.is_active == True).first()
     if not user:

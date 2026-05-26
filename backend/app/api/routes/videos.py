@@ -1,7 +1,8 @@
 from datetime import datetime, timezone, timedelta
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from app.core.database import get_db
+from app.core.rate_limit import limiter
 from app.core.security import get_current_user
 from app.core.storage import storage
 from app.models.user import User
@@ -16,7 +17,9 @@ router = APIRouter(prefix="/video", tags=["video"])
 
 
 @router.post("/generate", response_model=VideoJobOut, status_code=202)
+@limiter.limit("10/minute")
 def generate_video(
+    request: Request,
     payload: GenerateVideoRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),

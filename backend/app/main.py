@@ -5,9 +5,13 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 from pathlib import Path
 import structlog
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from app.core.config import get_settings
 from app.core.database import engine, Base
+from app.core.rate_limit import limiter
 from app.api.routes import auth, projects, avatars, voices, videos, scripts
 import app.models  # noqa: F401 — register all models
 
@@ -72,6 +76,11 @@ app = FastAPI(
     redoc_url="/api/redoc",
     lifespan=lifespan,
 )
+
+# Rate limiting
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 # CORS — allow listed origins + optional regex (covers Vercel preview URLs)
 cors_kwargs: dict = {
