@@ -57,17 +57,50 @@ const initialState: CreateVideoStoreState = {
   resolution: "1080p",
 };
 
-export const useCreateVideoStore = create<CreateVideoStore>()((set) => ({
-  ...initialState,
-  setStep: (step) => set({ step }),
-  setTitle: (title) => set({ title }),
-  setProjectId: (id) => set({ projectId: id }),
-  setAvatar: (avatar) => set({ avatar }),
-  setScript: (script) => set({ script }),
-  setVoice: (voice) => set({ selectedVoice: voice }),
-  setGeneratedAudio: (audio) => set({ generatedAudio: audio }),
-  setVideoJob: (job) => set({ videoJob: job }),
-  setGeneratedVideo: (video) => set({ generatedVideo: video }),
-  setResolution: (resolution) => set({ resolution }),
-  reset: () => set(initialState),
-}));
+export const useCreateVideoStore = create<CreateVideoStore>()(
+  persist(
+    (set) => ({
+      ...initialState,
+      setStep: (step) => set({ step }),
+      setTitle: (title) => set({ title }),
+      setProjectId: (id) => set({ projectId: id }),
+      setAvatar: (avatar) => set({ avatar }),
+      setScript: (script) => set({ script }),
+      setVoice: (voice) => set({ selectedVoice: voice }),
+      setGeneratedAudio: (audio) => set({ generatedAudio: audio }),
+      setVideoJob: (job) => set({ videoJob: job }),
+      setGeneratedVideo: (video) => set({ generatedVideo: video }),
+      setResolution: (resolution) => set({ resolution }),
+      reset: () => set(initialState),
+    }),
+    {
+      name: "create-video-store",
+      storage: {
+        getItem: (key) => {
+          if (typeof window === "undefined") return null;
+          const v = sessionStorage.getItem(key);
+          return v ? JSON.parse(v) : null;
+        },
+        setItem: (key, value) => {
+          if (typeof window !== "undefined") sessionStorage.setItem(key, JSON.stringify(value));
+        },
+        removeItem: (key) => {
+          if (typeof window !== "undefined") sessionStorage.removeItem(key);
+        },
+      },
+      // Exclude functions from persistence — only persist data fields
+      partialize: (state) => ({
+        step: state.step,
+        title: state.title,
+        projectId: state.projectId,
+        avatar: state.avatar,
+        script: state.script,
+        selectedVoice: state.selectedVoice,
+        generatedAudio: state.generatedAudio,
+        videoJob: state.videoJob,
+        generatedVideo: state.generatedVideo,
+        resolution: state.resolution,
+      }),
+    }
+  )
+);
