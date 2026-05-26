@@ -49,43 +49,50 @@ async def generate_video(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    project = db.query(Project).filter(Project.id == payload.project_id, Project.user_id == current_user.id).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    import traceback as _tb
+    try:
+        project = db.query(Project).filter(Project.id == payload.project_id, Project.user_id == current_user.id).first()
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
 
-    avatar = db.query(Avatar).filter(Avatar.id == payload.avatar_id, Avatar.user_id == current_user.id).first()
-    if not avatar:
-        raise HTTPException(status_code=404, detail="Avatar not found")
+        avatar = db.query(Avatar).filter(Avatar.id == payload.avatar_id, Avatar.user_id == current_user.id).first()
+        if not avatar:
+            raise HTTPException(status_code=404, detail="Avatar not found")
 
-    # Scope by project ownership to prevent IDOR
-    audio = (
-        db.query(GeneratedAudio)
-        .join(Project, GeneratedAudio.project_id == Project.id)
-        .filter(GeneratedAudio.id == payload.audio_id, Project.user_id == current_user.id)
-        .first()
-    )
-    if not audio:
-        raise HTTPException(status_code=404, detail="Audio not found")
+        # Scope by project ownership to prevent IDOR
+        audio = (
+            db.query(GeneratedAudio)
+            .join(Project, GeneratedAudio.project_id == Project.id)
+            .filter(GeneratedAudio.id == payload.audio_id, Project.user_id == current_user.id)
+            .first()
+        )
+        if not audio:
+            raise HTTPException(status_code=404, detail="Audio not found")
 
-    # Create job record — returned immediately so the client can poll status
-    job = VideoJob(project_id=payload.project_id, status="queued", progress=0, current_step="Queued")
-    db.add(job)
-    project.status = "processing"
-    db.commit()
-    db.refresh(job)
+        # Create job record — returned immediately so the client can poll status
+        job = VideoJob(project_id=payload.project_id, status="queued", progress=0, current_step="Queued")
+        db.add(job)
+        project.status = "processing"
+        db.commit()
+        db.refresh(job)
 
-    # Dispatch in-process background task (no Redis/Celery dependency)
-    background_tasks.add_task(
-        _run_video_job_background,
-        job_id=job.id,
-        avatar_storage_key=avatar.storage_key,
-        audio_storage_key=audio.storage_key,
-        resolution=payload.resolution,
-        project_id=payload.project_id,
-    )
+        # Dispatch in-process background task (no Redis/Celery dependency)
+        background_tasks.add_task(
+            _run_video_job_background,
+            job_id=job.id,
+            avatar_storage_key=avatar.storage_key,
+            audio_storage_key=audio.storage_key,
+            resolution=payload.resolution,
+            project_id=payload.project_id,
+        )
 
-    log.info("video_job.queued", job_id=job.id, project_id=payload.project_id)
-    return job
+        log.info("video_job.queued", job_id=job.id, project_id=payload.project_id)
+        return job
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log.error("video_generate.error", error=str(exc), traceback=_tb.format_exc())
+        raise HTTPException(status_code=500, detail=f"[DEBUG] {type(exc).__name__}: {exc}")
 
 
 @router.get("/status/{job_id}", response_model=VideoJobOut)
