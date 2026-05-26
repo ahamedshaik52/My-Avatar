@@ -23,10 +23,39 @@ log = structlog.get_logger(__name__)
 async def lifespan(app: FastAPI):
     # Create tables on startup (use Alembic in production)
     Base.metadata.create_all(bind=engine)
+    _run_migrations()
     _seed_voices()
     log.info("app.started", environment=settings.ENVIRONMENT)
     yield
     log.info("app.shutdown")
+
+
+def _run_migrations():
+    """Apply additive schema changes that create_all won't handle (existing tables)."""
+    from app.core.database import SessionLocal
+    from sqlalchemy import text
+
+    db = SessionLocal()
+    try:
+        migrations = [
+            # video_jobs: add video_id column (added after initial schema creation)
+            "ALTER TABLE video_jobs ADD COLUMN IF NOT EXISTS video_id VARCHAR(36) NULL",
+            # generated_videos: ensure all columns exist
+            "ALTER TABLE generated_videos ADD COLUMN IF NOT EXISTS thumbnail_url VARCHAR(1000) NOT NULL DEFAULT ''",
+            # projects: add generated_video_id and thumbnail_url if missing
+            "ALTER TABLE projects ADD COLUMN IF NOT EXISTS generated_video_id VARCHAR(36) NULL",
+            "ALTER TABLE projects ADD COLUMN IF NOT EXISTS thumbnail_url VARCHAR(1000) NULL",
+        ]
+        for sql in migrations:
+            try:
+                db.execute(text(sql))
+                db.commit()
+            except Exception as e:
+                db.rollback()
+                log.warning("migration.skipped", sql=sql[:60], error=str(e))
+        log.info("migrations.complete")
+    finally:
+        db.close()
 
 
 def _seed_voices():
