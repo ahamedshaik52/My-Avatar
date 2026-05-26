@@ -5,7 +5,7 @@ import { Play, MoreHorizontal, Download, Trash2, Clock, CheckCircle, AlertCircle
 import { useState } from "react";
 import { toast } from "sonner";
 import { cn, formatRelative, getStatusColor, getStatusLabel } from "@/lib/utils";
-import { projectsApi } from "@/lib/api";
+import { projectsApi, videoApi } from "@/lib/api";
 import type { Project } from "@/types";
 
 interface ProjectCardProps {
@@ -24,6 +24,27 @@ const StatusIcon = ({ status }: { status: string }) => {
 export function ProjectCard({ project, index = 0, onDelete }: ProjectCardProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownload = async () => {
+    if (!project.generated_video_id) {
+      toast.error("No video available for download");
+      return;
+    }
+    setDownloading(true);
+    try {
+      const { url } = await videoApi.getDownloadUrl(project.generated_video_id);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${project.title.replace(/\s+/g, "-")}.mp4`;
+      a.click();
+    } catch {
+      toast.error("Could not generate download link");
+    } finally {
+      setDownloading(false);
+      setMenuOpen(false);
+    }
+  };
 
   const handleDelete = async () => {
     setDeleting(true);
@@ -92,9 +113,13 @@ export function ProjectCard({ project, index = 0, onDelete }: ProjectCardProps) 
             {menuOpen && (
               <div className="absolute right-0 top-full mt-1 w-40 rounded-xl border border-avatar-dark-border bg-avatar-dark-card shadow-xl z-20">
                 {project.status === "completed" && (
-                  <button className="flex items-center gap-2 w-full px-3 py-2.5 text-sm text-muted-foreground hover:text-foreground hover:bg-secondary rounded-t-xl transition-colors">
+                  <button
+                    onClick={handleDownload}
+                    disabled={downloading}
+                    className="flex items-center gap-2 w-full px-3 py-2.5 text-sm text-muted-foreground hover:text-foreground hover:bg-secondary rounded-t-xl transition-colors disabled:opacity-50"
+                  >
                     <Download size={14} />
-                    Download
+                    {downloading ? "Preparing…" : "Download"}
                   </button>
                 )}
                 <button

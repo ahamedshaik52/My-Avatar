@@ -61,6 +61,36 @@ def get_project(
     return project
 
 
+@router.get("/stats")
+def get_project_stats(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Counts by status + this-month total for dashboard cards."""
+    from sqlalchemy import func, extract
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
+    base = db.query(Project).filter(Project.user_id == current_user.id)
+
+    total = base.count()
+    completed = base.filter(Project.status == "completed").count()
+    processing = base.filter(Project.status == "processing").count()
+    failed = base.filter(Project.status == "failed").count()
+    this_month = base.filter(
+        extract("year", Project.created_at) == now.year,
+        extract("month", Project.created_at) == now.month,
+    ).count()
+
+    return {
+        "total": total,
+        "completed": completed,
+        "processing": processing,
+        "failed": failed,
+        "this_month": this_month,
+    }
+
+
 @router.delete("/{project_id}", status_code=204)
 def delete_project(
     project_id: str,

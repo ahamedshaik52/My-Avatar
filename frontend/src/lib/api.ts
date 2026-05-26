@@ -104,6 +104,14 @@ export const authApi = {
 };
 
 // ─── Projects ─────────────────────────────────────────────────────────────────
+export interface ProjectStats {
+  total: number;
+  completed: number;
+  processing: number;
+  failed: number;
+  this_month: number;
+}
+
 export const projectsApi = {
   list: async (page = 1, limit = 12): Promise<PaginatedResponse<Project>> => {
     const res = await api.get<PaginatedResponse<Project>>("/api/projects", {
@@ -124,6 +132,11 @@ export const projectsApi = {
 
   delete: async (id: string): Promise<void> => {
     await api.delete(`/api/projects/${id}`);
+  },
+
+  stats: async (): Promise<ProjectStats> => {
+    const res = await api.get<ProjectStats>("/api/projects/stats");
+    return res.data;
   },
 };
 

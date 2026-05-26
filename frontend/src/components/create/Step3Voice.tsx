@@ -3,8 +3,7 @@ import { useState, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
-  ChevronLeft, ChevronRight, Play, Square, Mic, Loader2,
-  Upload, Filter, Search,
+  ChevronLeft, ChevronRight, Play, Square, Mic, Loader2, Search,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -20,7 +19,9 @@ export function Step3Voice() {
   const [genderFilter, setGenderFilter] = useState<string>("all");
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
+  const [previewingId, setPreviewingId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
   const { data: voices = [], isLoading } = useQuery({
     queryKey: ["voices"],
@@ -36,16 +37,33 @@ export function Step3Voice() {
   });
 
   const playPreview = async (voice: Voice) => {
+    // Stop if already playing this voice
     if (playingId === voice.id) {
       audioRef.current?.pause();
       setPlayingId(null);
       return;
     }
-    setPlayingId(voice.id);
+    // Don't start a new preview while one is loading
+    if (previewingId) return;
+
     if (audioRef.current) audioRef.current.pause();
-    audioRef.current = new Audio(voice.preview_url);
-    audioRef.current.play().catch(() => toast.error("Could not load preview"));
-    audioRef.current.onended = () => setPlayingId(null);
+    setPreviewingId(voice.id);
+    try {
+      const { url } = await voiceApi.preview(
+        voice.id,
+        `Hello! I'm ${voice.name}. This is a preview of my voice.`
+      );
+      // Resolve relative URLs against the API base
+      const fullUrl = url.startsWith("http") ? url : `${BASE_URL}${url}`;
+      audioRef.current = new Audio(fullUrl);
+      audioRef.current.play().catch(() => toast.error("Could not play preview"));
+      setPlayingId(voice.id);
+      audioRef.current.onended = () => setPlayingId(null);
+    } catch {
+      toast.error("Could not load voice preview");
+    } finally {
+      setPreviewingId(null);
+    }
   };
 
   const generateAudio = async () => {
@@ -145,6 +163,7 @@ export function Step3Voice() {
 
                   <button
                     onClick={(e) => { e.stopPropagation(); playPreview(voice); }}
+                    disabled={previewingId === voice.id}
                     className={cn(
                       "w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-colors",
                       playing
@@ -152,7 +171,11 @@ export function Step3Voice() {
                         : "bg-secondary text-muted-foreground hover:text-foreground"
                     )}
                   >
-                    {playing ? <Square size={12} fill="white" /> : <Play size={12} />}
+                    {previewingId === voice.id
+                      ? <Loader2 size={12} className="animate-spin" />
+                      : playing
+                        ? <Square size={12} fill="white" />
+                        : <Play size={12} />}
                   </button>
 
                   {selected && (
@@ -179,10 +202,13 @@ export function Step3Voice() {
           </div>
           <button
             onClick={() => playPreview(selectedVoice)}
-            className="text-xs text-avatar-purple-light hover:underline flex items-center gap-1"
+            disabled={!!previewingId}
+            className="text-xs text-avatar-purple-light hover:underline flex items-center gap-1 disabled:opacity-50"
           >
-            <Play size={12} />
-            Preview
+            {previewingId === selectedVoice.id
+              ? <Loader2 size={12} className="animate-spin" />
+              : <Play size={12} />}
+            {previewingId === selectedVoice.id ? "Loading…" : "Preview"}
           </button>
         </motion.div>
       )}

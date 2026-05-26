@@ -121,9 +121,6 @@ export function Step4Generate() {
                 <div className="text-xs mt-0.5">
                   {res === "1080p" ? "Full HD" : res === "2k" ? "2K QHD" : "4K Ultra HD"}
                 </div>
-                {res === "4k" && (
-                  <div className="text-xs text-yellow-400 mt-1 font-medium">Pro only</div>
-                )}
               </button>
             ))}
           </div>
