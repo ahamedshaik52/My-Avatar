@@ -5,6 +5,9 @@ from app.core.database import get_db
 from app.core.rate_limit import limiter
 from app.core.security import get_current_user
 from app.core.storage import storage
+from app.core.config import get_settings
+
+settings = get_settings()
 from app.models.user import User
 from app.models.project import Project
 from app.models.avatar import Avatar
@@ -38,6 +41,17 @@ def _run_video_job_background(
         )
     except Exception as exc:
         log.error("video_job.background_failed", job_id=job_id, error=str(exc))
+        # Ensure the job is marked failed even if process_video_job never reached its own handler
+        try:
+            from app.core.database import SessionLocal
+            from app.workers.video_worker import _mark_failed
+            _db = SessionLocal()
+            try:
+                _mark_failed(_db, job_id, project_id, f"Background task crashed: {exc}")
+            finally:
+                _db.close()
+        except Exception:
+            pass  # best-effort; original error already logged above
 
 
 @router.post("/generate", response_model=VideoJobOut, status_code=202)
@@ -69,6 +83,16 @@ async def generate_video(
         if not audio:
             raise HTTPException(status_code=404, detail="Audio not found")
 
+        # Concurrency guard — one active job per project at a time
+        active_statuses = ["queued", "validating", "generating_lipsync", "exporting"]
+        existing = (
+            db.query(VideoJob)
+            .filter(VideoJob.project_id == payload.project_id, VideoJob.status.in_(active_statuses))
+            .first()
+        )
+        if existing:
+            raise HTTPException(status_code=409, detail="A video generation job is already in progress for this project.")
+
         # Create job record — returned immediately so the client can poll status
         job = VideoJob(project_id=payload.project_id, status="queued", progress=0, current_step="Queued")
         db.add(job)
@@ -92,7 +116,9 @@ async def generate_video(
         raise
     except Exception as exc:
         log.error("video_generate.error", error=str(exc), traceback=_tb.format_exc())
-        raise HTTPException(status_code=500, detail=f"[DEBUG] {type(exc).__name__}: {exc}")
+        if settings.ENVIRONMENT != "production":
+            raise HTTPException(status_code=500, detail=f"{type(exc).__name__}: {exc}")
+        raise HTTPException(status_code=500, detail="Video generation failed. Please try again.")
 
 
 @router.get("/status/{job_id}", response_model=VideoJobOut)

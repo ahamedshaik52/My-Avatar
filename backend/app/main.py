@@ -25,7 +25,14 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     _run_migrations()
     _seed_voices()
-    log.info("app.started", environment=settings.ENVIRONMENT)
+    # Warn loudly if running in production with ephemeral local storage
+    if settings.ENVIRONMENT == "production" and settings.STORAGE_BACKEND == "local":
+        log.critical(
+            "storage.ephemeral_in_production",
+            warning="STORAGE_BACKEND=local is unsafe for production. All media is wiped on redeploy. "
+                    "Set STORAGE_BACKEND=s3 and configure S3_BUCKET_NAME / AWS credentials.",
+        )
+    log.info("app.started", environment=settings.ENVIRONMENT, storage_backend=settings.STORAGE_BACKEND)
     yield
     log.info("app.shutdown")
 
@@ -125,10 +132,12 @@ else:
 
 app.add_middleware(CORSMiddleware, **cors_kwargs)
 
-# Serve uploaded media locally
-media_path = Path(settings.LOCAL_STORAGE_PATH)
-media_path.mkdir(parents=True, exist_ok=True)
-app.mount("/media", StaticFiles(directory=str(media_path)), name="media")
+# Serve uploaded media — only mount static files when using local storage.
+# In S3 mode, /media/* URLs are not generated, so no mount is needed.
+if settings.STORAGE_BACKEND == "local":
+    media_path = Path(settings.LOCAL_STORAGE_PATH)
+    media_path.mkdir(parents=True, exist_ok=True)
+    app.mount("/media", StaticFiles(directory=str(media_path)), name="media")
 
 # Routers
 app.include_router(auth.router, prefix="/api")

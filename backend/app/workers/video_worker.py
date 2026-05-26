@@ -29,6 +29,7 @@ def _update_job(db, job_id: str, status: str, progress: int, current_step: str) 
         job.status = status
         job.progress = progress
         job.current_step = current_step
+        job.updated_at = datetime.now(timezone.utc)  # explicit — don't rely on ORM onupdate
         db.commit()
 
 

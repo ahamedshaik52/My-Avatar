@@ -47,27 +47,17 @@ def create_project(
     return project
 
 
-@router.get("/{project_id}", response_model=ProjectOut)
-def get_project(
-    project_id: str,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    project = db.query(Project).filter(
-        Project.id == project_id, Project.user_id == current_user.id
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-    return project
-
-
 @router.get("/stats")
 def get_project_stats(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Counts by status + this-month total for dashboard cards."""
-    from sqlalchemy import func, extract
+    """Counts by status + this-month total for dashboard cards.
+
+    MUST be declared before /{project_id} so FastAPI matches the literal
+    path segment 'stats' before treating it as a dynamic {project_id}.
+    """
+    from sqlalchemy import extract
     from datetime import datetime, timezone
 
     now = datetime.now(timezone.utc)
@@ -89,6 +79,20 @@ def get_project_stats(
         "failed": failed,
         "this_month": this_month,
     }
+
+
+@router.get("/{project_id}", response_model=ProjectOut)
+def get_project(
+    project_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    project = db.query(Project).filter(
+        Project.id == project_id, Project.user_id == current_user.id
+    ).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return project
 
 
 @router.delete("/{project_id}", status_code=204)
