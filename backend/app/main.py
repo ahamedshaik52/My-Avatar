@@ -117,5 +117,10 @@ def health():
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    log.error("unhandled_exception", path=request.url.path, error=str(exc))
+    import traceback
+    tb = traceback.format_exc()
+    log.error("unhandled_exception", path=request.url.path, error=str(exc), traceback=tb)
+    # Return real error in non-production so we can diagnose quickly
+    if settings.ENVIRONMENT != "production":
+        return JSONResponse(status_code=500, content={"detail": str(exc), "traceback": tb})
     return JSONResponse(status_code=500, content={"detail": "Internal server error"})
