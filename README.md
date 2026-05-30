@@ -1,6 +1,7 @@
 # My Avatar — AI Avatar Video Generation Platform
 
-> Original, production-ready AI avatar video creation SaaS.  
+> Original, **fully self-hosted** AI avatar video creation app — built with our
+> own code for personal use. **No paid APIs** (no D-ID, no ElevenLabs).
 > **Not affiliated with or derived from any third-party platform.**
 
 ---
@@ -10,10 +11,13 @@
 ```
 my-avatar/
 ├── frontend/          # Next.js 14 · TypeScript · Tailwind · shadcn/ui · Framer Motion
-├── backend/           # FastAPI · SQLAlchemy · Alembic · Celery
-├── docker-compose.yml # Full local stack (DB + Redis + API + Worker + Frontend)
+├── backend/           # FastAPI · SQLAlchemy · Alembic · self-hosted AI models
+│   ├── models/        # Kokoro ONNX + Wav2Lip (gitignored; setup_models.py)
+│   └── scripts/       # setup_models.py · test_pipeline.py (E2E smoke test)
 └── README.md
 ```
+
+Async video jobs run on **FastAPI BackgroundTasks** — no Celery, no Redis.
 
 ### Tech Stack
 
@@ -22,14 +26,16 @@ my-avatar/
 | Frontend | Next.js 14 (App Router), React 18, TypeScript, Tailwind CSS, shadcn/ui, Framer Motion |
 | State | Zustand, TanStack Query |
 | Backend | FastAPI, Python 3.11, SQLAlchemy 2, Alembic |
-| Queue | Celery + Redis |
+| Async jobs | FastAPI BackgroundTasks (no queue broker) |
 | Database | PostgreSQL 16 |
-| Storage | Local (dev) / AWS S3 (prod) |
-| TTS | ElevenLabs API (fallback: gTTS) |
-| Lip Sync | D-ID API (fallback: SadTalker local) |
-| Video | FFmpeg (interpolation · upscaling · color grading · noise cleanup) |
+| Storage | Local disk (dev/self-host) / AWS S3 (cloud) |
+| TTS | **Kokoro ONNX** (self-hosted, 50 voices, CPU) → edge-tts → gTTS |
+| Lip Sync | **Wav2Lip** (self-hosted, CPU) → SadTalker → static FFmpeg |
+| Video | FFmpeg (compose · normalize audio · thumbnail) |
 | Auth | JWT (python-jose + bcrypt) |
-| Testing | pytest (backend) · Playwright (E2E) |
+| Testing | pytest (backend) · Playwright (E2E) · `scripts/test_pipeline.py` (E2E smoke) |
+
+All AI inference is local and free. Models download once via `setup_models.py`.
 
 ---
 
@@ -39,8 +45,9 @@ my-avatar/
 
 - Node.js 20+
 - Python 3.11+
-- Docker & Docker Compose
+- PostgreSQL 16 (local install or Docker)
 - FFmpeg installed (`ffmpeg -version`)
+- ~6 GB free disk for self-hosted AI models
 
 ### 1. Clone and set up environment
 
@@ -51,39 +58,49 @@ cd My-Avatar
 
 # Backend env
 cp backend/.env.example backend/.env
-# Edit backend/.env — set SECRET_KEY, AI API keys (optional for dev)
+# Edit backend/.env — set SECRET_KEY and DATABASE_URL
 
 # Frontend env
 cp frontend/.env.local.example frontend/.env.local
 ```
 
-### 2. Start infrastructure (PostgreSQL + Redis)
-
-```bash
-docker-compose up db redis -d
-```
-
-### 3. Start the backend
+### 2. Install backend dependencies
 
 ```bash
 cd backend
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-
-# Run API server
-uvicorn app.main:app --reload --port 8000
 ```
 
-### 4. Start the Celery worker (separate terminal)
+### 3. Download the self-hosted AI models (one-time, ~3 GB)
+
+```bash
+cd backend
+python scripts/setup_models.py --all      # Kokoro TTS + Wav2Lip lip sync
+# or individually:  --tts   |   --lipsync
+```
+
+This downloads Kokoro ONNX (TTS) and Wav2Lip (lip sync), patches Wav2Lip for
+modern librosa, and writes the model paths into `backend/.env`.
+
+### 4. Verify the pipeline works end-to-end
+
+```bash
+cd backend
+python scripts/test_pipeline.py           # synthesizes speech + lip-syncs a test face
+# Expect: "PASS  Output is a TALKING video"
+```
+
+### 5. Start the backend
 
 ```bash
 cd backend
 source .venv/bin/activate
-celery -A app.workers.celery_app worker --loglevel=info
+uvicorn app.main:app --reload --port 8000
 ```
 
-### 5. Start the frontend
+### 6. Start the frontend
 
 ```bash
 cd frontend
@@ -187,23 +204,20 @@ npm run test:e2e
 
 ## Video Generation Pipeline
 
+The pipeline is intentionally lean and fully self-hosted:
+
 ```
-1.  Validate avatar + audio inputs
-2.  Download assets from storage
-3.  Normalize audio (loudnorm filter)
-4.  Generate lip-sync video (D-ID API or SadTalker)
-5.  Ensure ≥15 second duration (loop/pad)
-6.  Frame interpolation (2× FPS via minterpolate)
-7.  Upscale to target resolution (1080p / 2K / 4K — Lanczos)
-8.  Sharpen (unsharp mask)
-9.  Cinematic contrast + saturation (eq filter)
-10. Temporal noise reduction (hqdn3d)
-11. Final MP4 export (libx264 · AAC · faststart)
-12. Extract thumbnail
-13. Upload to storage
-14. Update job status → completed
-15. Show preview + download link
+1. Validate avatar + audio inputs, download assets from storage
+2. Synthesize speech  — Kokoro ONNX (self-hosted) → edge-tts → gTTS fallback
+3. Generate lip-sync  — Wav2Lip (self-hosted) → SadTalker → static FFmpeg fallback
+4. Extract thumbnail, export MP4 (libx264 · AAC · faststart)
+5. Upload to storage, update job status → completed, show preview + download
 ```
+
+Each stage degrades gracefully: if the self-hosted models are missing, TTS falls
+back to free online edge-tts and video falls back to static FFmpeg composition.
+`scripts/test_pipeline.py` proves the full path produces a real *talking* video
+(it frame-diffs the output to confirm the mouth actually moves).
 
 ---
 
@@ -216,41 +230,31 @@ npm run test:e2e
 ENVIRONMENT=production
 DEBUG=false
 SECRET_KEY=$(openssl rand -hex 32)
-DATABASE_URL=postgresql://user:pass@your-rds-host:5432/myavatar
-REDIS_URL=redis://your-redis-host:6379/0
-STORAGE_BACKEND=s3
+DATABASE_URL=postgresql://user:pass@your-host:5432/myavatar
+STORAGE_BACKEND=s3                # or "local" on a self-hosted box
 S3_BUCKET_NAME=myavatar-media
 AWS_ACCESS_KEY_ID=...
 AWS_SECRET_ACCESS_KEY=...
-ELEVENLABS_API_KEY=...
-D_ID_API_KEY=...
+# Self-hosted model paths (set by setup_models.py)
+KOKORO_MODEL_PATH=/app/backend/models/kokoro/kokoro-v1.0.onnx
+KOKORO_VOICES_PATH=/app/backend/models/kokoro/voices-v1.0.bin
+WAV2LIP_PATH=/app/backend/models/wav2lip
+WAV2LIP_CHECKPOINT=/app/backend/models/wav2lip/checkpoints/wav2lip_gan.pth
 ALLOWED_ORIGINS=["https://myavatar.ai"]
 ```
 
-### Deploy with Docker Compose
+### Recommended Setup
 
-```bash
-# Build and start all services
-docker-compose up --build -d
-
-# Run migrations
-docker-compose exec api alembic upgrade head
-
-# Check logs
-docker-compose logs -f api worker
-```
-
-### Recommended Production Setup
+See **[DEPLOYMENT.md](./DEPLOYMENT.md)** for the full model-provisioning strategy.
+Because lip sync is CPU-heavy and the models are ~3 GB, a **self-hosted box / VPS**
+(where models persist on real disk) is recommended for personal use.
 
 | Component | Recommendation |
 |---|---|
 | Frontend | Vercel (Next.js native) |
-| Backend API | Render / Railway / Fly.io |
-| Celery Worker | Same platform as API |
-| Database | Supabase / Neon / AWS RDS |
-| Redis | Upstash / AWS ElastiCache |
-| Storage | AWS S3 + CloudFront CDN |
-| Domain | Cloudflare |
+| Backend API + AI models | Self-hosted box / VPS (≥4 GB RAM) or Railway with a persistent Volume |
+| Database | Railway PostgreSQL / Supabase / Neon |
+| Storage | Local disk (self-host) or AWS S3 (cloud) |
 
 ---
 
@@ -277,7 +281,7 @@ docker-compose logs -f api worker
 5.  Step 2: Write script in the editor (templates available)
 6.  Step 3: Choose from 50+ voices → preview → confirm
 7.  Step 4: Select export quality → click "Generate Video"
-8.  Watch real-time pipeline progress (9 steps displayed)
+8.  Watch real-time pipeline progress (TTS → lip sync → export)
 9.  Preview generated video in the player
 10. Download MP4
 ```

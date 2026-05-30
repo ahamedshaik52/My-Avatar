@@ -1,9 +1,42 @@
 # QA Report — My Avatar Platform
-**Date:** 2026-05-26  
+**Date:** 2026-05-26 (original audit) · **Re-test:** 2026-05-30 (self-hosted rebuild)
 **Tester:** Senior QA Engineer + AI Video Generation Specialist  
 **App:** https://my-avatar-smoky.vercel.app  
 **Backend:** https://my-avatar-production.up.railway.app  
 **Method:** Full code audit (all backend services, models, routes, workers) + UI code review  
+
+---
+
+## 2026-05-30 Re-test Addendum — Self-Hosted Rebuild
+
+The platform was re-architected to be **fully self-hosted** (no paid APIs). The
+three P0 ship-blockers from the original audit are now **RESOLVED** and verified
+by an end-to-end smoke test (`backend/scripts/test_pipeline.py`).
+
+| Bug | Original status | Now | Evidence |
+|---|---|---|---|
+| BUG-001 — all voices female | CRITICAL Open | **FIXED** | Kokoro ONNX (50 gender/accent-correct voices) is primary TTS; edge-tts is the online fallback; gTTS is last resort. `_EDGE_TO_KOKORO` maps each seeded voice to a correctly-gendered Kokoro voice. |
+| BUG-002 — `datetime` NameError | CRITICAL Open | **FIXED** | `from datetime import datetime, timezone` present at `video_worker.py:11`. |
+| BUG-003 — no lip sync (static image) | CRITICAL Open | **FIXED** | `lipsync_service.generate()` wired at `video_worker.py:166`; Wav2Lip produces a real talking video. Smoke test: **201 frames, 64 distinct (32% changing) = PASS**. |
+| BUG-009 — inaccurate duration | MEDIUM Open | **FIXED** | `synthesize_with_duration()` probes real audio length via mutagen/soundfile; word-count estimate is fallback only. |
+
+**E2E smoke test result (2026-05-30):**
+```
+[tts]    Kokoro -> 382 KB, ~8.1s speech.wav (voice en-US-GuyNeural / Marcus, male)
+[lipsync] Wav2Lip -> 671 KB result.mp4
+[verify] frames sampled: 201, distinct: 64 (32% changing)
+PASS  Output is a TALKING video - mouth/frames animate over time.
+```
+
+Key fix that unblocked lip sync: Wav2Lip's bundled `audio.py` called
+`librosa.filters.mel()` with positional args, which librosa 0.10+ rejects
+(keyword-only). The TypeError was swallowed, silently falling back to a static
+image. Patched to keyword args; `setup_models.py` now re-applies this patch on
+every setup (since `backend/models/` is gitignored).
+
+**Still open / out of scope for personal use:** BUG-004 (resolution tiers),
+BUG-005 (pipeline UI step count), BUG-006 (subtitles), BUG-007/008 (LOW). See
+roadmap below.
 
 ---
 
@@ -244,15 +277,15 @@ Additionally, **4 HIGH bugs** (fake resolution tiers, dead video pipeline, no su
 
 | ID | Severity | Priority | Component | Title | Status |
 |---|---|---|---|---|---|
-| BUG-001 | CRITICAL | P0 | TTS Service | All voices produce female audio (gTTS has no gender param) | Open |
-| BUG-002 | CRITICAL | P0 | video_worker | Missing `datetime` import causes NameError on all job status updates | Open |
-| BUG-003 | CRITICAL | P0 | video_worker / lipsync_service | lipsync_service never called — all videos are static images | Open |
-| BUG-004 | HIGH | P1 | video_worker / video_pipeline | Resolution selection ignored — all output 720p regardless of tier | Open |
-| BUG-005 | MEDIUM | P2 | video_worker / UI | Pipeline UI shows 9 steps; backend only runs 4 | Open |
-| BUG-006 | HIGH | P1 | video_worker / GeneratedVideo | Subtitle generation not implemented anywhere | Open |
+| BUG-001 | CRITICAL | P0 | TTS Service | All voices produce female audio (gTTS has no gender param) | **FIXED (2026-05-30)** — Kokoro ONNX + edge-tts |
+| BUG-002 | CRITICAL | P0 | video_worker | Missing `datetime` import causes NameError on all job status updates | **FIXED** — import added |
+| BUG-003 | CRITICAL | P0 | video_worker / lipsync_service | lipsync_service never called — all videos are static images | **FIXED** — Wav2Lip wired, verified talking video |
+| BUG-004 | HIGH | P1 | video_worker / video_pipeline | Resolution selection ignored — all output 720p regardless of tier | Open (roadmap) |
+| BUG-005 | MEDIUM | P2 | video_worker / UI | Pipeline UI shows 9 steps; backend only runs 4 | Open (roadmap) |
+| BUG-006 | HIGH | P1 | video_worker / GeneratedVideo | Subtitle generation not implemented anywhere | Open (roadmap) |
 | BUG-007 | LOW | P3 | videos.py route | DownloadHistory.ip_address always NULL | Open |
 | BUG-008 | LOW | P3 | main.py | Voice preview_url files don't exist on disk (`/media/previews/*.mp3`) | Open |
-| BUG-009 | MEDIUM | P2 | tts_service | Duration estimate inaccurate — `max(15, ...)` floor hides real audio length | Open |
+| BUG-009 | MEDIUM | P2 | tts_service | Duration estimate inaccurate — `max(15, ...)` floor hides real audio length | **FIXED** — probes real duration |
 
 ---
 

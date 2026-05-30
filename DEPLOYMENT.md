@@ -4,10 +4,57 @@
 
 | Component | Service | Notes |
 |-----------|---------|-------|
-| Backend (FastAPI) | [Railway](https://railway.app) | Auto-deploys from `backend/` via Nixpacks |
+| Backend (FastAPI) | Self-hosted box / VPS / Railway | Async jobs via FastAPI BackgroundTasks (no Celery/Redis) |
 | Frontend (Next.js) | [Vercel](https://vercel.com) | Auto-deploys from `frontend/` |
-| Database | Railway PostgreSQL | Persistent, survives redeploys |
-| Media storage | AWS S3 (production) / local (dev) | **Must be S3 in production** |
+| Database | Railway PostgreSQL (or local Postgres) | Persistent, survives redeploys |
+| Media storage | AWS S3 (cloud) / local disk (dev/self-host) | S3 only if backend FS is ephemeral |
+| TTS | **Kokoro ONNX** (self-hosted) → edge-tts → gTTS | No paid API. 82M model, CPU, 50 voices |
+| Lip sync | **Wav2Lip** (self-hosted) → SadTalker → static FFmpeg | No paid API. torch CPU, ~60-120s/10s video |
+
+This stack is **fully self-hosted** — no D-ID, no ElevenLabs, no paid services.
+All AI runs locally from `backend/models/` (gitignored; populated by
+`python scripts/setup_models.py --all`).
+
+---
+
+## Deployment Strategy for Self-Hosted Models
+
+The AI models are large and the lip-sync inference is CPU-heavy:
+
+| Asset | Size | Notes |
+|---|---|---|
+| Kokoro ONNX model + voices | ~430 MB | `backend/models/kokoro/` |
+| Wav2Lip repo + torch (CPU) | ~2.0 GB | torch is the bulk |
+| Wav2Lip checkpoint + s3fd detector | ~500 MB | `backend/models/wav2lip/checkpoints/` |
+
+Because `backend/models/` is **gitignored**, it is never in the image — it must
+be provisioned at runtime. Choose one of:
+
+### Option A — Self-hosted box / VPS (recommended for personal use)
+Run the backend on a machine you control (your PC, a home server, or a small
+VPS with ≥4 GB RAM and ≥6 GB disk). Models persist on real disk, so you run
+`setup_models.py --all` **once** and lip sync works on every job.
+This is the intended deployment for the project's "personal use, own code" goal.
+
+```bash
+cd backend
+python scripts/setup_models.py --all      # one-time, downloads ~3 GB
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+`STORAGE_BACKEND=local` is fine here — media lives in `./media/`.
+
+### Option B — Railway with a persistent Volume
+Railway's container FS is ephemeral, but a **mounted Volume** is not. Attach a
+volume at `/app/backend/models`, then run `setup_models.py --all` once (via a
+one-off shell) so the download survives redeploys. Set `MAX` build memory
+accordingly; CPU lip sync of a 10s clip takes 1-3 min and will tie up a worker.
+
+### Option C — Cloud without models (graceful degradation)
+If you deploy the backend with no models provisioned, the pipeline degrades
+safely: **edge-tts** (free, online, no key) gives correct-gender voices, and
+video falls back to **static FFmpeg composition** (no lip motion). Use this only
+as a stopgap — it does not deliver a talking avatar.
 
 ---
 
@@ -51,11 +98,26 @@ ALLOWED_ORIGINS_REGEX=https://.*\.vercel\.app
 FRONTEND_URL=https://your-app.vercel.app
 ```
 
-### Optional — AI services
+### Self-hosted AI models (set by `setup_models.py`)
 ```
-ELEVENLABS_API_KEY=<elevenlabs key>   # Real TTS voices; falls back to gTTS if unset
-D_ID_API_KEY=<d-id key>               # Lip-sync; uses static image fallback if unset
+# TTS — Kokoro ONNX (no API key, runs on CPU)
+KOKORO_MODEL_PATH=/app/backend/models/kokoro/kokoro-v1.0.onnx
+KOKORO_VOICES_PATH=/app/backend/models/kokoro/voices-v1.0.bin
+
+# Lip sync — Wav2Lip (no API key, runs on CPU)
+WAV2LIP_PATH=/app/backend/models/wav2lip
+WAV2LIP_CHECKPOINT=/app/backend/models/wav2lip/checkpoints/wav2lip_gan.pth
+
+# Optional secondary lip-sync engine
+SADTALKER_MODEL_PATH=/app/backend/models/sadtalker
 ```
+
+### Optional — paid cloud upgrade (NOT required; project is self-hosted)
+```
+ELEVENLABS_API_KEY=<key>   # only used if set; Kokoro is the default self-hosted TTS
+```
+> The project intentionally avoids paid APIs. Leave these unset for a fully
+> self-hosted deployment. D-ID has been removed entirely in favor of Wav2Lip.
 
 ### Optional — email
 ```

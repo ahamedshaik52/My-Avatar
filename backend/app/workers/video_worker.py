@@ -159,9 +159,9 @@ def process_video_job(
                 raise ValueError("Audio file is empty")
 
             # ── Lip-sync / compose video ─────────────────────────────────────
-            # Uses D-ID API when D_ID_API_KEY is set (real lip sync).
-            # Falls back to SadTalker if SADTALKER_MODEL_PATH exists.
-            # Falls back to static FFmpeg composition otherwise.
+            # Self-hosted: Wav2Lip when WAV2LIP_PATH + WAV2LIP_CHECKPOINT are
+            # set (real lip sync, runs on CPU). Falls back to SadTalker if
+            # SADTALKER_MODEL_PATH exists, then to static FFmpeg composition.
             update("generating_lipsync", 40, "Generating lip sync")
             asyncio.run(lipsync_service.generate(avatar_local, audio_local, output_path))
 

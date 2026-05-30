@@ -93,3 +93,6 @@ desktop.ini
 backend/alembic/__pycache__/
 
 backend/models/
+
+# Test pipeline generated artifacts
+backend/scripts/test_assets/output/

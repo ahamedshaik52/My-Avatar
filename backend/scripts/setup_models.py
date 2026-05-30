@@ -97,6 +97,31 @@ def setup_tts() -> None:
 # Wav2Lip — self-hosted lip sync, personal/non-commercial use
 # ─────────────────────────────────────────────────────────────────────────────
 
+def patch_wav2lip_librosa(wav2lip_dir: Path) -> None:
+    """Make Wav2Lip's audio.py compatible with librosa >= 0.10.
+
+    librosa 0.10 made ``librosa.filters.mel()`` keyword-only. Wav2Lip's
+    bundled audio.py still calls it positionally, which raises a TypeError
+    that Wav2Lip swallows — silently producing a STATIC image instead of a
+    talking video. We rewrite the call to use keyword arguments.
+    """
+    audio_py = wav2lip_dir / "audio.py"
+    if not audio_py.exists():
+        print("  [patch] audio.py not found yet (repo not cloned?) — skipping")
+        return
+
+    text = audio_py.read_text(encoding="utf-8")
+    old = "librosa.filters.mel(hp.sample_rate, hp.n_fft, n_mels=hp.num_mels,"
+    new = "librosa.filters.mel(sr=hp.sample_rate, n_fft=hp.n_fft, n_mels=hp.num_mels,"
+    if old in text:
+        audio_py.write_text(text.replace(old, new), encoding="utf-8")
+        print("  [patch] audio.py: librosa.filters.mel() -> keyword args (librosa 0.10+)")
+    elif new in text:
+        print("  [patch] audio.py already patched for librosa 0.10+")
+    else:
+        print("  [patch] WARNING: could not find librosa.filters.mel() call to patch")
+
+
 def setup_lipsync() -> None:
     print("\n" + "=" * 60)
     print("Setting up Wav2Lip (self-hosted lip sync)")
@@ -115,6 +140,13 @@ def setup_lipsync() -> None:
              str(wav2lip_dir)])
     else:
         print("  [skip] Wav2Lip repo already cloned")
+
+    # Patch Wav2Lip for modern librosa (0.10+). Wav2Lip's audio.py calls
+    # librosa.filters.mel() with positional args, but librosa made these
+    # keyword-only in 0.10. Without this patch, lip sync silently falls back
+    # to a STATIC image. backend/models/ is gitignored, so we re-apply on
+    # every setup to guarantee the fix survives a fresh clone.
+    patch_wav2lip_librosa(wav2lip_dir)
 
     # Install Wav2Lip Python dependencies
     # NOTE: Wav2Lip's requirements.txt pins ancient versions (numpy==1.17.1, librosa==0.7.0)
