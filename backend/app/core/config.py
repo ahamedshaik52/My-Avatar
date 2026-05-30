@@ -50,10 +50,24 @@ class Settings(BaseSettings):
     AWS_SECRET_ACCESS_KEY: str = ""
     CDN_BASE_URL: str = ""
 
-    # AI Services
-    ELEVENLABS_API_KEY: str = ""
+    # AI Services — all optional; self-hosted models used by default
+    ELEVENLABS_API_KEY: str = ""   # Optional cloud TTS upgrade
     OPENAI_API_KEY: str = ""
-    D_ID_API_KEY: str = ""       # Avatar lip-sync service
+    D_ID_API_KEY: str = ""         # Optional cloud lip-sync upgrade
+
+    # ── Self-hosted TTS: Kokoro ONNX ────────────────────────────────────────
+    # Download models once with:  python backend/scripts/setup_models.py --tts
+    # Kokoro runs on CPU, no API key, 50 male/female voices, Apache-2.0 license.
+    KOKORO_MODEL_PATH: str = "./models/kokoro/kokoro-v1.0.onnx"
+    KOKORO_VOICES_PATH: str = "./models/kokoro/voices-v1.0.bin"
+
+    # ── Self-hosted lip sync: Wav2Lip ────────────────────────────────────────
+    # Download + install with:  python backend/scripts/setup_models.py --lipsync
+    # Wav2Lip runs on CPU (~60-120s/10s video), non-commercial personal use.
+    WAV2LIP_PATH: str = "./models/wav2lip"
+    WAV2LIP_CHECKPOINT: str = "./models/wav2lip/checkpoints/wav2lip_gan.pth"
+
+    # ── Fallback: SadTalker (Apache-2.0, CPU mode available) ────────────────
     SADTALKER_MODEL_PATH: str = "./models/sadtalker"
 
     # Upload limits
