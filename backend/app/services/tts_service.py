@@ -87,16 +87,16 @@ _EDGE_TO_KOKORO: dict[str, str] = {
     "en-US-ChristopherNeural": "am_echo",     # David — clear neutral male
 }
 
-# Lang code: 'a' = American English, 'b' = British English
+# Lang code: kokoro-onnx 0.5+ uses BCP-47 language tags
 _KOKORO_LANG: dict[str, str] = {
-    "af_": "a", "am_": "a",   # American female / male
-    "bf_": "b", "bm_": "b",   # British female / male
+    "af_": "en-us", "am_": "en-us",   # American female / male
+    "bf_": "en-gb", "bm_": "en-gb",   # British female / male
 }
 
 
 def _kokoro_lang(voice: str) -> str:
     prefix = voice[:3]
-    return _KOKORO_LANG.get(prefix, "a")
+    return _KOKORO_LANG.get(prefix, "en-us")
 
 
 class TTSService:

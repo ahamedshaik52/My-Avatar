@@ -91,3 +91,5 @@ desktop.ini
 # ─── Alembic ───────────────────────────────────────────────────────────────────
 # Keep migrations, ignore cache
 backend/alembic/__pycache__/
+
+backend/models/

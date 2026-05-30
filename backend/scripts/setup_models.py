@@ -117,10 +117,22 @@ def setup_lipsync() -> None:
         print("  [skip] Wav2Lip repo already cloned")
 
     # Install Wav2Lip Python dependencies
-    req_file = wav2lip_dir / "requirements.txt"
-    if req_file.exists():
-        print("\nInstalling Wav2Lip dependencies ...")
-        run([sys.executable, "-m", "pip", "install", "-r", str(req_file)])
+    # NOTE: Wav2Lip's requirements.txt pins ancient versions (numpy==1.17.1, librosa==0.7.0)
+    # that are incompatible with Python 3.9+. We install modern compatible replacements.
+    print("\nInstalling Wav2Lip dependencies (modern compatible versions) ...")
+    wav2lip_deps = [
+        "torch",
+        "torchvision",
+        "opencv-python",
+        "numpy>=1.24.0",
+        "librosa>=0.10.0",
+        "batch-face>=1.4.2",  # modern face-alignment replacement
+        "tqdm",
+        "numba",
+        "scipy",
+        "audioread",
+    ]
+    run([sys.executable, "-m", "pip", "install", "-U"] + wav2lip_deps)
 
     # Download face detection model
     face_det_dir = wav2lip_dir / "face_detection" / "detection" / "sfd"
