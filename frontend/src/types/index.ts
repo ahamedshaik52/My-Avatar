@@ -41,6 +41,7 @@ export interface Avatar {
   width?: number;
   height?: number;
   duration?: number;
+  file_size?: number;
   created_at: string;
 }
 

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Play, MoreHorizontal, Download, Trash2, Clock, CheckCircle, AlertCircle } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { cn, formatRelative, getStatusColor, getStatusLabel } from "@/lib/utils";
+import { cn, formatRelative, getStatusColor, getStatusLabel, toMediaUrl, saveBlob, safeVideoFilename } from "@/lib/utils";
 import { projectsApi, videoApi } from "@/lib/api";
 import type { Project } from "@/types";
 
@@ -33,13 +33,11 @@ export function ProjectCard({ project, index = 0, onDelete }: ProjectCardProps) 
     }
     setDownloading(true);
     try {
-      const { url } = await videoApi.getDownloadUrl(project.generated_video_id);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${project.title.replace(/\s+/g, "-")}.mp4`;
-      a.click();
+      const blob = await videoApi.downloadBlob(project.generated_video_id);
+      saveBlob(blob, safeVideoFilename(project.title));
+      toast.success("Download started");
     } catch {
-      toast.error("Could not generate download link");
+      toast.error("Could not download the video. It may no longer be available.");
     } finally {
       setDownloading(false);
       setMenuOpen(false);
@@ -70,7 +68,7 @@ export function ProjectCard({ project, index = 0, onDelete }: ProjectCardProps) 
       {/* Thumbnail */}
       <div className="relative aspect-video bg-gradient-to-br from-avatar-dark-card to-avatar-dark">
         {project.thumbnail_url ? (
-          <img src={project.thumbnail_url} alt={project.title} className="w-full h-full object-cover" />
+          <img src={toMediaUrl(project.thumbnail_url)} alt={project.title} className="w-full h-full object-cover" />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
             <div className="w-12 h-12 rounded-xl bg-avatar-purple/20 flex items-center justify-center">

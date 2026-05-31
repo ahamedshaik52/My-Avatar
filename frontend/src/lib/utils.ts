@@ -5,6 +5,41 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+/**
+ * Resolve a stored media reference to a URL the browser can actually load.
+ * Backend local-storage URLs are relative (`/media/...`); on a different host
+ * (e.g. the Vercel frontend) those must be absolutized against the API origin
+ * so preview/poster requests don't 404 against the frontend domain.
+ * Absolute URLs (S3, http/https) and blob/data URLs pass through unchanged.
+ */
+export function toMediaUrl(path: string | null | undefined): string | undefined {
+  if (!path) return undefined;
+  if (/^(https?:|blob:|data:)/i.test(path)) return path;
+  if (path.startsWith("/media")) return `${API_BASE}${path}`;
+  return path;
+}
+
+/** Trigger a browser "Save As" for an in-memory blob with the given filename. */
+export function saveBlob(blob: Blob, filename: string): void {
+  const objectUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = objectUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  // Revoke on the next tick so the download has a chance to start.
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+}
+
+/** Build a filesystem-safe `<base>.mp4` filename from a project title. */
+export function safeVideoFilename(title: string | null | undefined, fallback = "my-avatar"): string {
+  const base = (title || fallback).trim().replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+  return `${(base || fallback).slice(0, 80)}.mp4`;
+}
+
 export function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);

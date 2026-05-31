@@ -88,19 +88,22 @@ export const useCreateVideoStore = create<CreateVideoStore>()(
           if (typeof window !== "undefined") sessionStorage.removeItem(key);
         },
       },
-      // Exclude functions from persistence — only persist data fields
-      partialize: (state) => ({
-        step: state.step,
-        title: state.title,
-        projectId: state.projectId,
-        avatar: state.avatar,
-        script: state.script,
-        selectedVoice: state.selectedVoice,
-        generatedAudio: state.generatedAudio,
-        videoJob: state.videoJob,
-        generatedVideo: state.generatedVideo,
-        resolution: state.resolution,
-      }),
+      // Exclude functions from persistence — only persist data fields.
+      // Cast because zustand's persist types partialize as returning the full
+      // store, but we intentionally drop the action functions.
+      partialize: (state) =>
+        ({
+          step: state.step,
+          title: state.title,
+          projectId: state.projectId,
+          avatar: state.avatar,
+          script: state.script,
+          selectedVoice: state.selectedVoice,
+          generatedAudio: state.generatedAudio,
+          videoJob: state.videoJob,
+          generatedVideo: state.generatedVideo,
+          resolution: state.resolution,
+        }) as CreateVideoStore,
     }
   )
 );

@@ -251,6 +251,19 @@ export const videoApi = {
     );
     return res.data;
   },
+
+  /**
+   * Fetch the generated MP4 as a Blob via the authenticated streaming endpoint.
+   * This works regardless of host/storage backend and yields a real, playable
+   * file (the relative /media URL approach 404s when the frontend is on a
+   * different origin than the backend).
+   */
+  downloadBlob: async (id: string): Promise<Blob> => {
+    const res = await api.get(`/api/video/download-file/${id}`, {
+      responseType: "blob",
+    });
+    return res.data as Blob;
+  },
 };
 
 export default api;

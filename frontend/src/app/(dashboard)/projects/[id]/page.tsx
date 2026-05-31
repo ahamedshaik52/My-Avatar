@@ -11,7 +11,7 @@ import {
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { projectsApi, videoApi } from "@/lib/api";
-import { formatRelative, formatFileSize, getStatusColor, getStatusLabel, cn } from "@/lib/utils";
+import { formatRelative, formatFileSize, getStatusColor, getStatusLabel, cn, toMediaUrl, saveBlob, safeVideoFilename } from "@/lib/utils";
 import type { GeneratedVideo } from "@/types";
 
 export default function ProjectDetailPage() {
@@ -19,6 +19,8 @@ export default function ProjectDetailPage() {
   const router = useRouter();
   const [downloading, setDownloading] = useState(false);
   const [video, setVideo] = useState<GeneratedVideo | null>(null);
+  const [videoLoadError, setVideoLoadError] = useState(false);
+  const [previewError, setPreviewError] = useState(false);
 
   const { data: project, isLoading, isError } = useQuery({
     queryKey: ["project", id],
@@ -29,21 +31,25 @@ export default function ProjectDetailPage() {
   // Load the generated video when project is completed
   useEffect(() => {
     if (project?.status === "completed" && project.generated_video_id && !video) {
-      videoApi.get(project.generated_video_id).then(setVideo).catch(() => {});
+      videoApi
+        .get(project.generated_video_id)
+        .then((v) => {
+          setVideo(v);
+          setVideoLoadError(false);
+        })
+        .catch(() => setVideoLoadError(true));
     }
   }, [project?.status, project?.generated_video_id]);
 
   const handleDownload = async () => {
-    if (!project?.generated_video_id) return;
+    if (!project?.generated_video_id || downloading) return;
     setDownloading(true);
     try {
-      const { url } = await videoApi.getDownloadUrl(project.generated_video_id);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${project.title.replace(/\s+/g, "-")}.mp4`;
-      a.click();
+      const blob = await videoApi.downloadBlob(project.generated_video_id);
+      saveBlob(blob, safeVideoFilename(project.title));
+      toast.success("Download started");
     } catch {
-      toast.error("Could not generate download link. Please try again.");
+      toast.error("Could not download the video. It may no longer be available — try regenerating.");
     } finally {
       setDownloading(false);
     }
@@ -143,12 +149,25 @@ export default function ProjectDetailPage() {
           className="glass-card rounded-2xl overflow-hidden"
         >
           <div className="aspect-video bg-black">
-            <video
-              src={video.url}
-              controls
-              poster={video.thumbnail_url || project.thumbnail_url || undefined}
-              className="w-full h-full"
-            />
+            {previewError ? (
+              <div className="w-full h-full flex flex-col items-center justify-center text-center px-6">
+                <AlertCircle size={32} className="text-red-400 mb-2" />
+                <p className="text-sm text-foreground font-medium">Preview unavailable</p>
+                <p className="text-xs text-muted-foreground mt-1 max-w-sm">
+                  The video file couldn&apos;t be loaded (the backend may be offline or the file was
+                  removed). Try the download button, or regenerate the video.
+                </p>
+              </div>
+            ) : (
+              <video
+                src={toMediaUrl(video.url)}
+                controls
+                playsInline
+                poster={toMediaUrl(video.thumbnail_url || project.thumbnail_url || undefined)}
+                className="w-full h-full"
+                onError={() => setPreviewError(true)}
+              />
+            )}
           </div>
           <div className="p-5 flex flex-wrap gap-6 text-sm text-muted-foreground border-t border-avatar-dark-border">
             <span><strong className="text-foreground">{video.resolution.toUpperCase()}</strong> resolution</span>
@@ -159,10 +178,28 @@ export default function ProjectDetailPage() {
       )}
 
       {/* Loading video data */}
-      {project.status === "completed" && !video && (
+      {project.status === "completed" && !video && !videoLoadError && (
         <div className="glass-card rounded-2xl p-12 flex items-center justify-center">
           <Loader2 size={24} className="animate-spin text-avatar-purple-light mr-3" />
           <span className="text-muted-foreground text-sm">Loading video…</span>
+        </div>
+      )}
+
+      {/* Completed but the video record/URL is missing or failed to load */}
+      {project.status === "completed" && !video && videoLoadError && (
+        <div className="glass-card rounded-2xl p-10 text-center border border-red-400/20">
+          <AlertCircle size={40} className="mx-auto text-red-400 mb-3" />
+          <h2 className="text-lg font-semibold text-foreground mb-2">Video unavailable</h2>
+          <p className="text-muted-foreground text-sm max-w-sm mx-auto mb-6">
+            This project is marked complete but its video couldn&apos;t be loaded. The backend may be
+            offline, or the file was removed from storage. Regenerating will produce a fresh video.
+          </p>
+          <Button variant="gradient" asChild>
+            <Link href="/create">
+              <RefreshCw size={16} className="mr-2" />
+              Regenerate video
+            </Link>
+          </Button>
         </div>
       )}
 

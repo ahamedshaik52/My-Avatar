@@ -37,6 +37,28 @@ async def lifespan(app: FastAPI):
     log.info("app.shutdown")
 
 
+def _existing_columns(db, table: str) -> set[str]:
+    """Return the set of column names on a table, dialect-aware.
+
+    SQLite rejects ``ADD COLUMN IF NOT EXISTS``, so we check existence first
+    rather than relying on that (Postgres-only) syntax.
+    """
+    from sqlalchemy import text
+
+    dialect = db.bind.dialect.name
+    if dialect == "sqlite":
+        rows = db.execute(text(f"PRAGMA table_info({table})")).fetchall()
+        return {r[1] for r in rows}
+    rows = db.execute(
+        text(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name = :t"
+        ),
+        {"t": table},
+    ).fetchall()
+    return {r[0] for r in rows}
+
+
 def _run_migrations():
     """Apply additive schema changes that create_all won't handle (existing tables)."""
     from app.core.database import SessionLocal
@@ -44,14 +66,26 @@ def _run_migrations():
 
     db = SessionLocal()
     try:
+        # (table, column, column_definition) — added with a plain ADD COLUMN only
+        # when the column is missing. Avoids the Postgres-only IF NOT EXISTS that
+        # SQLite cannot parse (which previously left video_jobs.video_id missing).
+        add_columns = [
+            ("video_jobs", "video_id", "VARCHAR(36) NULL"),
+            ("generated_videos", "thumbnail_url", "VARCHAR(1000) NOT NULL DEFAULT ''"),
+            ("projects", "generated_video_id", "VARCHAR(36) NULL"),
+            ("projects", "thumbnail_url", "VARCHAR(1000) NULL"),
+        ]
+        for table, column, ddl in add_columns:
+            try:
+                if column not in _existing_columns(db, table):
+                    db.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"))
+                    db.commit()
+                    log.info("migration.column_added", table=table, column=column)
+            except Exception as e:
+                db.rollback()
+                log.warning("migration.skipped", sql=f"{table}.{column}", error=str(e))
+
         migrations = [
-            # video_jobs: add video_id column (added after initial schema creation)
-            "ALTER TABLE video_jobs ADD COLUMN IF NOT EXISTS video_id VARCHAR(36) NULL",
-            # generated_videos: ensure all columns exist
-            "ALTER TABLE generated_videos ADD COLUMN IF NOT EXISTS thumbnail_url VARCHAR(1000) NOT NULL DEFAULT ''",
-            # projects: add generated_video_id and thumbnail_url if missing
-            "ALTER TABLE projects ADD COLUMN IF NOT EXISTS generated_video_id VARCHAR(36) NULL",
-            "ALTER TABLE projects ADD COLUMN IF NOT EXISTS thumbnail_url VARCHAR(1000) NULL",
             # voices: backfill edge-tts external_ids for existing seeded voices
             # so existing DBs get gender-correct voices without a full re-seed.
             "UPDATE voices SET external_id='en-US-JennyNeural',      provider='edge-tts' WHERE name='Emma'     AND (external_id IS NULL OR external_id='')",

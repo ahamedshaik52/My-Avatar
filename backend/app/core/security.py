@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from typing import Any
+import bcrypt
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from fastapi import HTTPException, status, Depends
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
@@ -9,16 +9,28 @@ from app.core.config import get_settings
 from app.core.database import get_db
 
 settings = get_settings()
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+
+# bcrypt operates on the first 72 bytes of the secret. We truncate explicitly
+# so longer passwords hash deterministically instead of raising on bcrypt >= 4.
+# Using the bcrypt library directly avoids the passlib<->bcrypt version coupling
+# that otherwise 500s registration/login with bcrypt 4.x/5.x.
+_BCRYPT_MAX_BYTES = 72
+
+
+def _to_secret(password: str) -> bytes:
+    return password.encode("utf-8")[:_BCRYPT_MAX_BYTES]
 
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    return bcrypt.hashpw(_to_secret(password), bcrypt.gensalt()).decode("utf-8")
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    try:
+        return bcrypt.checkpw(_to_secret(plain), hashed.encode("utf-8"))
+    except (ValueError, TypeError):
+        return False
 
 
 def create_access_token(subject: str, extra: dict[str, Any] | None = None) -> str:

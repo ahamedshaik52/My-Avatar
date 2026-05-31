@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { useCreateVideoStore } from "@/lib/store";
 import { videoApi } from "@/lib/api";
-import { getStatusLabel, formatFileSize } from "@/lib/utils";
+import { getStatusLabel, formatFileSize, toMediaUrl, saveBlob, safeVideoFilename } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import type { JobStep } from "@/types";
 
@@ -30,6 +30,8 @@ export function Step4Generate() {
   } = useCreateVideoStore();
 
   const [starting, setStarting] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [previewError, setPreviewError] = useState(false);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
 
   const startGeneration = async () => {
@@ -79,15 +81,16 @@ export function Step4Generate() {
   }, [videoJob?.id, videoJob?.status]);
 
   const handleDownload = async () => {
-    if (!generatedVideo) return;
+    if (!generatedVideo || downloading) return;
+    setDownloading(true);
     try {
-      const { url } = await videoApi.getDownloadUrl(generatedVideo.id);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `my-avatar-${Date.now()}.mp4`;
-      a.click();
+      const blob = await videoApi.downloadBlob(generatedVideo.id);
+      saveBlob(blob, safeVideoFilename(`my-avatar-${resolution}`));
+      toast.success("Download started");
     } catch {
-      toast.error("Download link expired. Please refresh.");
+      toast.error("Could not download the video. It may no longer be available — try regenerating.");
+    } finally {
+      setDownloading(false);
     }
   };
 
@@ -203,18 +206,39 @@ export function Step4Generate() {
           {/* Video preview */}
           <div className="glass-card rounded-xl overflow-hidden">
             <div className="aspect-video bg-black">
-              <video
-                src={generatedVideo.url}
-                controls
-                className="w-full h-full"
-                poster={generatedVideo.thumbnail_url}
-              />
+              {previewError ? (
+                <div className="w-full h-full flex flex-col items-center justify-center text-center px-6">
+                  <AlertCircle size={32} className="text-red-400 mb-2" />
+                  <p className="text-sm text-foreground font-medium">Preview unavailable</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    The video file could not be loaded. You can still try downloading it, or regenerate.
+                  </p>
+                </div>
+              ) : (
+                <video
+                  src={toMediaUrl(generatedVideo.url)}
+                  controls
+                  playsInline
+                  className="w-full h-full"
+                  poster={toMediaUrl(generatedVideo.thumbnail_url)}
+                  onError={() => setPreviewError(true)}
+                />
+              )}
             </div>
           </div>
 
-          <Button variant="gradient" size="xl" className="w-full" onClick={handleDownload}>
-            <Download size={20} className="mr-2" />
-            Download MP4 ({resolution.toUpperCase()})
+          <Button
+            variant="gradient"
+            size="xl"
+            className="w-full"
+            onClick={handleDownload}
+            disabled={downloading}
+          >
+            {downloading ? (
+              <><Loader2 size={20} className="animate-spin mr-2" />Preparing download…</>
+            ) : (
+              <><Download size={20} className="mr-2" />Download MP4 ({resolution.toUpperCase()})</>
+            )}
           </Button>
         </motion.div>
       )}

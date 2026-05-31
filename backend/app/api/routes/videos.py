@@ -1,5 +1,8 @@
+import re
+from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.rate_limit import limiter
@@ -190,4 +193,79 @@ def get_download_url(
     return DownloadUrlOut(
         url=signed_url,
         expires_at=(datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
+    )
+
+
+def _safe_filename(title: str | None, fallback: str) -> str:
+    """Build a filesystem/header-safe .mp4 filename from a project title."""
+    base = (title or fallback).strip() or fallback
+    base = re.sub(r"[^A-Za-z0-9._-]+", "-", base).strip("-") or fallback
+    return f"{base[:80]}.mp4"
+
+
+@router.get("/download-file/{video_id}")
+def download_video_file(
+    video_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Stream the actual MP4 bytes with an attachment header.
+
+    Works regardless of domain or storage backend (local disk or S3) and forces
+    a real file download with the correct extension and MIME type — unlike a bare
+    relative /media URL, which the browser may navigate to or fail to resolve on
+    a different host (the deployed-frontend 404 case).
+    """
+    row = (
+        db.query(GeneratedVideo, Project.title)
+        .join(Project, GeneratedVideo.project_id == Project.id)
+        .filter(GeneratedVideo.id == video_id, Project.user_id == current_user.id)
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Video not found")
+    video, project_title = row
+
+    filename = _safe_filename(project_title, f"my-avatar-{video.id[:8]}")
+
+    # Record the download (best-effort; never block the file response on this).
+    try:
+        db.add(DownloadHistory(user_id=current_user.id, video_id=video.id))
+        db.commit()
+    except Exception:
+        db.rollback()
+
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+
+    if settings.STORAGE_BACKEND == "s3":
+        try:
+            import boto3
+            s3 = boto3.client(
+                "s3",
+                region_name=settings.S3_REGION,
+                aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+                aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+            )
+            obj = s3.get_object(Bucket=settings.S3_BUCKET_NAME, Key=video.storage_key)
+        except Exception as exc:
+            log.error("video_download.s3_error", video_id=video_id, error=str(exc))
+            raise HTTPException(status_code=404, detail="Video file is no longer available.")
+        return StreamingResponse(
+            obj["Body"].iter_chunks(),
+            media_type="video/mp4",
+            headers=headers,
+        )
+
+    # Local-disk backend
+    file_path = Path(settings.LOCAL_STORAGE_PATH) / video.storage_key
+    if not file_path.is_file() or file_path.stat().st_size == 0:
+        raise HTTPException(
+            status_code=404,
+            detail="Video file is no longer available (storage may have been reset). Please regenerate.",
+        )
+    return FileResponse(
+        path=str(file_path),
+        media_type="video/mp4",
+        filename=filename,
+        headers=headers,
     )
