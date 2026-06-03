@@ -56,17 +56,16 @@ class VideoPipeline:
             # 1. Ensure minimum duration via loop/pad
             current = self._ensure_duration(current, min_duration, tmp)
 
-            # 2. Frame interpolation (2x via minterpolate)
-            current = self._interpolate_frames(current, tmp)
-
-            # 3. Upscale to target resolution
+            # 2. Upscale to target resolution
+            # (Frame interpolation removed — minterpolate causes ghosting/blur
+            # on portrait talking-head videos)
             target_w, target_h = _RESOLUTION_MAP[resolution]
             current = self._upscale(current, target_w, target_h, tmp)
 
-            # 4. Color grading + sharpness + noise cleanup (single ffmpeg pass)
+            # 3. Color grading + sharpness + noise cleanup (single ffmpeg pass)
             current = self._enhance(current, tmp)
 
-            # 5. Final export
+            # 4. Final export
             self._final_export(current, dst)
 
         return dst
@@ -114,14 +113,19 @@ class VideoPipeline:
         out = str(Path(tmp) / "upscaled.mp4")
         (
             ffmpeg.input(src)
-            .video.filter("scale", w, h, flags="lanczos")
+            .video.filter(
+                "scale", w, h,
+                flags="lanczos",
+                force_original_aspect_ratio="decrease",
+            )
+            .filter("pad", w, h, "(ow-iw)/2", "(oh-ih)/2")
             .output(
                 ffmpeg.input(src).audio,
                 out,
                 vcodec="libx264",
                 acodec="copy",
                 pix_fmt="yuv420p",
-                crf=18,
+                crf=16,
                 preset="medium",
             )
             .overwrite_output()
@@ -131,25 +135,27 @@ class VideoPipeline:
 
     def _enhance(self, src: str, tmp: str) -> str:
         """
-        Apply cinematic color grading, sharpness, and noise reduction in one pass.
-        Filters:
-          - unsharp: sharpen edges
-          - eq: boost contrast & saturation (cinematic look)
-          - hqdn3d: temporal + spatial noise reduction
+        Apply face-optimised sharpening, color grading, and noise reduction.
+        Filters applied in order:
+          - unsharp (la=1.5): strong edge sharpening for face clarity
+          - cas (0.6): contrast adaptive sharpening — recovers fine face detail
+          - eq: subtle contrast/saturation boost (cinematic look)
+          - hqdn3d: temporal+spatial noise reduction (mild to not re-blur faces)
         """
         out = str(Path(tmp) / "enhanced.mp4")
         (
             ffmpeg.input(src)
-            .video.filter("unsharp", lx=5, ly=5, la=0.8)
+            .video.filter("unsharp", lx=5, ly=5, la=1.5, cx=5, cy=5, ca=0.5)
+            .filter("cas", strength=0.6)
             .filter("eq", contrast=1.1, brightness=0.02, saturation=1.15)
-            .filter("hqdn3d", luma_spatial=3, chroma_spatial=3)
+            .filter("hqdn3d", luma_spatial=2, chroma_spatial=2)
             .output(
                 ffmpeg.input(src).audio,
                 out,
                 vcodec="libx264",
                 acodec="copy",
                 pix_fmt="yuv420p",
-                crf=16,
+                crf=14,
                 preset="medium",
             )
             .overwrite_output()

@@ -186,6 +186,8 @@ class LipSyncService:
         """Compose a static image + audio into MP4 (no motion, no lip sync).
 
         Always available fallback. Install Wav2Lip for talking-avatar output.
+        Encodes at high quality (crf=16) at native source resolution with
+        face-optimised sharpening so the avatar stays crisp.
         """
         loop = asyncio.get_running_loop()
 
@@ -195,15 +197,22 @@ class LipSyncService:
                     "ffmpeg", "-y",
                     "-loop", "1", "-i", avatar_path,
                     "-i", audio_path,
-                    "-vf", "scale=1280:720:force_original_aspect_ratio=decrease,"
-                           "pad=1280:720:(ow-iw)/2:(oh-ih)/2",
+                    # Scale to 1080p max while preserving aspect ratio — no
+                    # downscale to 720p, no black bars on portrait shots.
+                    "-vf", (
+                        "scale='if(gt(iw,1920),1920,iw)':'if(gt(ih,1080),1080,ih)'"
+                        ":flags=lanczos:force_original_aspect_ratio=decrease,"
+                        # Sharpening: unsharp for edges + cas for face detail
+                        "unsharp=lx=5:ly=5:la=1.5:cx=5:cy=5:ca=0.5,"
+                        "cas=strength=0.6"
+                    ),
                     "-c:v", "libx264",
-                    "-preset", "ultrafast",
-                    "-tune", "stillimage",
-                    "-crf", "28",
+                    "-preset", "medium",
+                    "-crf", "16",
                     "-c:a", "aac",
-                    "-b:a", "128k",
+                    "-b:a", "192k",
                     "-pix_fmt", "yuv420p",
+                    "-movflags", "+faststart",
                     "-shortest",
                     output_path,
                 ],

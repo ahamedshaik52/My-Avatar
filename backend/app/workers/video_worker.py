@@ -16,6 +16,7 @@ import structlog
 from app.core.config import get_settings
 from app.core.storage import storage
 from app.services.lipsync_service import lipsync_service
+from app.services.video_pipeline import video_pipeline
 
 settings = get_settings()
 log = structlog.get_logger(__name__)
@@ -163,13 +164,30 @@ def process_video_job(
             # set (real lip sync, runs on CPU). Falls back to SadTalker if
             # SADTALKER_MODEL_PATH exists, then to static FFmpeg composition.
             update("generating_lipsync", 40, "Generating lip sync")
-            asyncio.run(lipsync_service.generate(avatar_local, audio_local, output_path))
+            lipsync_path = str(Path(tmp) / "lipsync.mp4")
+            asyncio.run(lipsync_service.generate(avatar_local, audio_local, lipsync_path))
+
+            if not os.path.exists(lipsync_path) or os.path.getsize(lipsync_path) == 0:
+                raise RuntimeError("Lip-sync produced an empty output file")
+
+            # ── Enhancement pipeline ──────────────────────────────────────────
+            # Upscale to target resolution + face-optimised sharpening +
+            # color grading. This is the step that turns a blurry 720p static
+            # fallback into a crisp, broadcast-quality output.
+            update("exporting", 60, "Enhancing video quality")
+            asyncio.run(
+                video_pipeline.run(
+                    lipsync_video_path=lipsync_path,
+                    output_path=output_path,
+                    resolution=resolution,  # type: ignore[arg-type]
+                )
+            )
 
             if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
-                raise RuntimeError("FFmpeg produced an empty output file")
+                raise RuntimeError("Enhancement pipeline produced an empty output file")
 
             # ── Thumbnail ─────────────────────────────────────────────────────
-            update("exporting", 70, "Generating thumbnail")
+            update("exporting", 75, "Generating thumbnail")
             _extract_thumbnail(output_path, thumb_path)
 
             duration  = _probe_duration(output_path)
